@@ -196,23 +196,23 @@ void AXP2101Component::setup()
     bool en;
 
     // DCDC 120%(130%) high voltage turn off PMIC function
-    en = PMU.getDCHighVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDCHighVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDCHighVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDCHighVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
     // DCDC1 85% low voltage turn off PMIC function
-    en = PMU.getDC1LowVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDC1LowVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDC1LowVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDC1LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
     // DCDC2 85% low voltage turn off PMIC function
-    en = PMU.getDC2LowVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDC2LowVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDC2LowVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDC2LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
     // DCDC3 85% low voltage turn off PMIC function
-    en = PMU.getDC3LowVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDC3LowVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDC3LowVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDC3LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
     // DCDC4 85% low voltage turn off PMIC function
-    en = PMU.getDC4LowVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDC4LowVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDC4LowVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDC4LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
     // DCDC5 85% low voltage turn off PMIC function
-    en = PMU.getDC5LowVoltagePowerDowmEn();
-    ESP_LOGCONFIG(TAG, "getDC5LowVoltagePowerDowmEn: %s", en ? "ENABLE" : "DISABLE");
+    en = PMU.getDC5LowVoltagePowerDownEn();
+    ESP_LOGCONFIG(TAG, "getDC5LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
 
     // PMU.setDCHighVoltagePowerDowm(true);
     // PMU.setDC1LowVoltagePowerDowm(true);
