@@ -1,7 +1,9 @@
 #include "axp2101.h"
 #include "esp_sleep.h"
 #include "esphome/core/log.h"
-#include "Arduino.h"
+#include "driver/gpio.h"
+
+//#include "Arduino.h"
 
 #ifndef CONFIG_PMU_SDA
 #define CONFIG_PMU_SDA 21
@@ -22,7 +24,7 @@ const uint8_t i2c_sda = CONFIG_PMU_SDA;
 const uint8_t i2c_scl = CONFIG_PMU_SCL;
 const uint8_t pmu_irq_pin = CONFIG_PMU_IRQ;
 
-void setFlag(void)
+void setFlag(void* arg)
 {
     pmu_flag = true;
 }
@@ -246,9 +248,19 @@ void AXP2101Component::setup()
 
 
     // Force add pull-up
-    pinMode(pmu_irq_pin, INPUT_PULLUP);
-    attachInterrupt(pmu_irq_pin, setFlag, FALLING);
+    //pinMode(pmu_irq_pin, INPUT_PULLUP);
+    //attachInterrupt(pmu_irq_pin, setFlag, FALLING);
 
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_NEGEDGE; 
+    io_conf.mode = GPIO_MODE_INPUT;       
+    io_conf.pin_bit_mask = (1ULL << pmu_irg_pin); 
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;     
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE; 
+    gpio_config(&io_conf);                       
+
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(pmu_irq_pin, setFlag, (void*) pmu_irq_pin);
 
     // Disable all interrupts
     PMU.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
