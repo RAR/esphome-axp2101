@@ -1,7 +1,7 @@
 #include "axp2101.h"
 #include "esp_sleep.h"
 #include "esphome/core/log.h"
-#include <Esp.h>
+//#include <Esp.h>
 
 #ifndef CONFIG_PMU_SDA
 #define CONFIG_PMU_SDA 21
