@@ -258,7 +258,7 @@ void AXP2101Component::setup()
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE; 
     gpio_config(&io_conf);                       
 
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_install_isr_service(0);
     gpio_isr_handler_add(GPIO_NUM_35, setFlag, (void*) GPIO_NUM_35);
 
     // Disable all interrupts
