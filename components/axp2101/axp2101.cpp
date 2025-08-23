@@ -439,8 +439,8 @@ void AXP2101Component::UpdateBrightness()
     switch (this->model_) {
       case AXP2101_M5CORE2:
       {
-        uint8_t buf = Read8bit( 0x96 ); // was 27
-        Write1Byte( 0x96 , ((buf & 0x80) | (ubri << 3)) );
+        uint8_t buf = Read8bit( 0x27 );
+        Write1Byte( 0x27 , ((buf & 0x80) | (ubri << 3)) );
         break;
       }
     }
