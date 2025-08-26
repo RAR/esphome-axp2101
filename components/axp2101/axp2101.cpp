@@ -105,7 +105,7 @@ void AXP2101Component::setup()
 
     //BLDO1 IMAX=300mA
     //500~3500mV, 100mV/step,31steps
-    PMU.setBLDO1Voltage(2500);
+    PMU.setBLDO1Voltage(3000);
 
     //BLDO2 IMAX=300mA
     //500~3500mV, 100mV/step,31steps
