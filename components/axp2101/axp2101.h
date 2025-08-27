@@ -34,8 +34,9 @@ class AXP2101Component : public PollingComponent, public i2c::I2CDevice {
 public:
   void set_batteryvoltage_sensor(sensor::Sensor *batteryvoltage_sensor) { batteryvoltage_sensor_ = batteryvoltage_sensor; }
   void set_batterylevel_sensor(sensor::Sensor *batterylevel_sensor) { batterylevel_sensor_ = batterylevel_sensor; }
+  void set_brightness(float brightness) { brightness_ = brightness; UpdateBrightness(); }
+
   void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
-  void set_brightness(float brightness) { brightness_ = brightness; }
   void set_model(AXP2101Model model) { this->model_ = model; }
 
   // ========== INTERNAL METHODS ==========
@@ -52,23 +53,30 @@ protected:
     sensor::Sensor *batteryvoltage_sensor_;
     sensor::Sensor *batterylevel_sensor_;
     binary_sensor::BinarySensor *batterycharging_bsensor_;
-    float brightness_{1.0f};
+
+    float brightness_{.50f};
     float curr_brightness_{-1.0f};
     AXP2101Model model_;
 
-    /** M5Stack Core2 Values
+    /* 
+     * M5Stack Core2 Values
      * LDO2: ILI9342C PWR (Display)
+     * LD03: Vibration Motor
+     * 
+     * M5Stack Core2 1.1 Values
+     * BLD01: Backlight
+     * ALD04: ILI9342C PWR (Display)
      * LD03: Vibration Motor
      */
 
-    void  UpdateBrightness();
-    bool  GetBatState();
-    uint8_t  GetBatData();
+    void UpdateBrightness();
+    bool GetBatState();
+    uint8_t GetBatData();
 
-    void  EnableCoulombcounter(void);
-    void  DisableCoulombcounter(void);
-    void  StopCoulombcounter(void);
-    void  ClearCoulombcounter(void);
+    void EnableCoulombcounter(void);
+    void DisableCoulombcounter(void);
+    void StopCoulombcounter(void);
+    void ClearCoulombcounter(void);
     uint32_t GetCoulombchargeData(void);
     uint32_t GetCoulombdischargeData(void);
     float GetCoulombData(void);
