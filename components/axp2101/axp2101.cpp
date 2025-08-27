@@ -1,9 +1,7 @@
 #include "axp2101.h"
 #include "esp_sleep.h"
 #include "esphome/core/log.h"
-#include "driver/gpio.h"
-
-//#include "Arduino.h"
+#include <Esp.h>
 
 #ifndef CONFIG_PMU_SDA
 #define CONFIG_PMU_SDA 21
@@ -22,8 +20,9 @@ XPowersPMU PMU;
 
 const uint8_t i2c_sda = CONFIG_PMU_SDA;
 const uint8_t i2c_scl = CONFIG_PMU_SCL;
+const uint8_t pmu_irq_pin = CONFIG_PMU_IRQ;
 
-void setFlag(void* arg)
+void setFlag(void)
 {
     pmu_flag = true;
 }
@@ -247,19 +246,9 @@ void AXP2101Component::setup()
 
 
     // Force add pull-up
-    //pinMode(pmu_irq_pin, INPUT_PULLUP);
-    //attachInterrupt(pmu_irq_pin, setFlag, FALLING);
+    pinMode(pmu_irq_pin, INPUT_PULLUP);
+    attachInterrupt(pmu_irq_pin, setFlag, FALLING);
 
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_NEGEDGE; 
-    io_conf.mode = GPIO_MODE_INPUT;       
-    io_conf.pin_bit_mask = (1ULL << GPIO_NUM_21); 
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;     
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE; 
-    gpio_config(&io_conf);                       
-
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_NUM_21, setFlag, (void*) GPIO_NUM_21);
 
     // Disable all interrupts
     PMU.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
@@ -420,36 +409,29 @@ void AXP2101Component::ReadBuff( uint8_t Addr , uint8_t Size , uint8_t *Buff )
 
 void AXP2101Component::UpdateBrightness()
 {
-    if (brightness_ == curr_brightness_) return;
-
-    float cur_volt = static_cast<float>(PMU.getBLDO1Voltage());
-    float new_rounded_mv = 500.0;
-
-    if (brightness_ != 0.0) 
+    if (brightness_ == curr_brightness_)
     {
-        const float c_min = 2500;
-        const float c_max = 3300;
-        const float multiple = 100;
-
-        auto cur_pct = static_cast<float>(((cur_volt - c_min)/(c_max - c_min) * 100) * .01);
-        auto new_mv = static_cast<float>(((c_max - c_min) * brightness_) + c_min);
-        new_rounded_mv = static_cast<float>(std::ceil(new_mv / multiple) * multiple);
-        ESP_LOGD(TAG, "Brightness:%f (%f), Curr: %f (%f)", brightness_, new_rounded_mv, cur_volt, cur_pct);
-    }
-    else
-    {
-        ESP_LOGD(TAG, "Turning Backlight off.");
+        return;
     }
 
+    ESP_LOGD(TAG, "Brightness=%f (Curr: %f)", brightness_, curr_brightness_);
     curr_brightness_ = brightness_;
 
+    const uint8_t c_min = 7;
+    const uint8_t c_max = 12;
+    auto ubri = c_min + static_cast<uint8_t>(brightness_ * (c_max - c_min));
+
+    if (ubri > c_max)
+    {
+        ubri = c_max;
+    }
     switch (this->model_) {
-        case AXP2101_M5CORE2:
-        {
-          ESP_LOGD(TAG, "Setting Brightness mv to %f (%f)", new_rounded_mv, brightness_);
-          PMU.setBLDO1Voltage(new_rounded_mv);
-          break;
-        }
+      case AXP2101_M5CORE2:
+      {
+        uint8_t buf = Read8bit( 0x27 );
+        Write1Byte( 0x27 , ((buf & 0x80) | (ubri << 3)) );
+        break;
+      }
     }
 }
 
