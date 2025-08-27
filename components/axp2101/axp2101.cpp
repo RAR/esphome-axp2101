@@ -427,7 +427,7 @@ void AXP2101Component::UpdateBrightness()
 
     if (brightness_ != 0.0) 
     {
-        const float c_min = 2400;
+        const float c_min = 2500;
         const float c_max = 3300;
         const float multiple = 100;
 
