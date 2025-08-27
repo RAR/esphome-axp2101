@@ -105,7 +105,7 @@ void AXP2101Component::setup()
 
     //BLDO1 IMAX=300mA
     //500~3500mV, 100mV/step,31steps
-    PMU.setBLDO1Voltage(3000);
+    PMU.setBLDO1Voltage(3300);
 
     //BLDO2 IMAX=300mA
     //500~3500mV, 100mV/step,31steps
@@ -420,29 +420,36 @@ void AXP2101Component::ReadBuff( uint8_t Addr , uint8_t Size , uint8_t *Buff )
 
 void AXP2101Component::UpdateBrightness()
 {
-    if (brightness_ == curr_brightness_)
+    if (brightness_ == curr_brightness_) return;
+
+    float cur_volt = static_cast<float>(PMU.getBLDO1Voltage());
+    float new_rounded_mv = 500.0;
+
+    if (brightness_ != 0.0) 
     {
-        return;
+        const float c_min = 2400;
+        const float c_max = 3300;
+        const float multiple = 100;
+
+        auto cur_pct = static_cast<float>(((cur_volt - c_min)/(c_max - c_min) * 100) * .01);
+        auto new_mv = static_cast<float>(((c_max - c_min) * brightness_) + c_min);
+        new_rounded_mv = static_cast<float>(std::ceil(new_mv / multiple) * multiple);
+        ESP_LOGD(TAG, "Brightness:%f (%f), Curr: %f (%f)", brightness_, new_rounded_mv, cur_volt, cur_pct);
+    }
+    else
+    {
+        ESP_LOGD(TAG, "Turning Backlight off.");
     }
 
-    ESP_LOGD(TAG, "Brightness=%f (Curr: %f)", brightness_, curr_brightness_);
     curr_brightness_ = brightness_;
 
-    const uint8_t c_min = 7;
-    const uint8_t c_max = 12;
-    auto ubri = c_min + static_cast<uint8_t>(brightness_ * (c_max - c_min));
-
-    if (ubri > c_max)
-    {
-        ubri = c_max;
-    }
     switch (this->model_) {
-      case AXP2101_M5CORE2:
-      {
-        uint8_t buf = Read8bit( 0x27 );
-        Write1Byte( 0x27 , ((buf & 0x80) | (ubri << 3)) );
-        break;
-      }
+        case AXP2101_M5CORE2:
+        {
+          ESP_LOGD(TAG, "Setting Brightness mv to %f (%f)", new_rounded_mv, brightness_);
+          PMU.setBLDO1Voltage(new_rounded_mv);
+          break;
+        }
     }
 }
 
