@@ -1,9 +1,9 @@
 #ifndef __AXP2101_H__
 #define __AXP2101_H__
 
-#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/core/component.h"
 
 #define XPOWERS_CHIP_AXP2101
@@ -34,7 +34,7 @@ class AXP2101Component : public PollingComponent, public i2c::I2CDevice {
 public:
   void set_batteryvoltage_sensor(sensor::Sensor *batteryvoltage_sensor) { batteryvoltage_sensor_ = batteryvoltage_sensor; }
   void set_batterylevel_sensor(sensor::Sensor *batterylevel_sensor) { batterylevel_sensor_ = batterylevel_sensor; }
-  void set_brightness(float brightness) { brightness_ = brightness; UpdateBrightness(); }
+  void set_brightness(float brightness) { brightness_ = brightness; }
 
   void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
   void set_model(AXP2101Model model) { this->model_ = model; }
@@ -43,91 +43,24 @@ public:
   // (In most use cases you won't need these)
   void setup() override;
   void dump_config() override;
-  float get_setup_priority() const override;
   void update() override;
+  float get_setup_priority() const override;
 
 private:
-    static std::string GetStartupReason();
+  int readRegister(uint8_t reg);
+  int writeRegister(uint8_t reg, uint8_t *buf, uint8_t length);
+  uint16_t getBLDO1Voltage(void);
+  bool setBLDO1Voltage(uint16_t millivolt);
+
 
 protected:
-    sensor::Sensor *batteryvoltage_sensor_;
-    sensor::Sensor *batterylevel_sensor_;
-    binary_sensor::BinarySensor *batterycharging_bsensor_;
+  sensor::Sensor *batteryvoltage_sensor_;
+  sensor::Sensor *batterylevel_sensor_;
+  binary_sensor::BinarySensor *batterycharging_bsensor_;
 
-    float brightness_{.50f};
-    float curr_brightness_{-1.0f};
-    AXP2101Model model_;
-
-    /* 
-     * M5Stack Core2 Values
-     * LDO2: ILI9342C PWR (Display)
-     * LD03: Vibration Motor
-     * 
-     * M5Stack Core2 1.1 Values
-     * BLD01: Backlight
-     * ALD04: ILI9342C PWR (Display)
-     * LD03: Vibration Motor
-     */
-
-    void UpdateBrightness();
-    bool GetBatState();
-    uint8_t GetBatData();
-
-    void EnableCoulombcounter(void);
-    void DisableCoulombcounter(void);
-    void StopCoulombcounter(void);
-    void ClearCoulombcounter(void);
-    uint32_t GetCoulombchargeData(void);
-    uint32_t GetCoulombdischargeData(void);
-    float GetCoulombData(void);
-
-    uint16_t GetVbatData(void) __attribute__((deprecated));
-    uint16_t GetIchargeData(void) __attribute__((deprecated));
-    uint16_t GetIdischargeData(void) __attribute__((deprecated));
-    uint16_t GetTempData(void) __attribute__((deprecated));
-    uint32_t GetPowerbatData(void) __attribute__((deprecated));
-    uint16_t GetVinData(void) __attribute__((deprecated));
-    uint16_t GetIinData(void) __attribute__((deprecated));
-    uint16_t GetVusbinData(void) __attribute__((deprecated));
-    uint16_t GetIusbinData(void) __attribute__((deprecated));
-    uint16_t GetVapsData(void) __attribute__((deprecated));
-    uint8_t GetBtnPress(void);
-
-      // -- sleep
-    void SetSleep(void);
-    void DeepSleep(uint64_t time_in_us = 0);
-    void LightSleep(uint64_t time_in_us = 0);
-
-    // void SetChargeVoltage( uint8_t );
-    void  SetChargeCurrent( uint8_t );
-    float GetBatCurrent();
-    float GetVinVoltage();
-    float GetVinCurrent();
-    float GetVBusVoltage();
-    float GetVBusCurrent();
-    float GetTempInAXP2101();
-    float GetBatPower();
-    float GetBatChargeCurrent();
-    float GetAPSVoltage();
-    float GetBatCoulombInput();
-    float GetBatCoulombOut();
-    uint8_t GetWarningLevel(void);
-    void SetCoulombClear();
-    void SetLDO2( bool State );
-    void SetLDO3( bool State );
-    void SetAdcState(bool State);
-
-    void PowerOff();
-
-
-    void Write1Byte( uint8_t Addr ,  uint8_t Data );
-    uint8_t Read8bit( uint8_t Addr );
-    uint16_t Read12Bit( uint8_t Addr);
-    uint16_t Read13Bit( uint8_t Addr);
-    uint16_t Read16bit( uint8_t Addr );
-    uint32_t Read24bit( uint8_t Addr );
-    uint32_t Read32bit( uint8_t Addr );
-    void ReadBuff( uint8_t Addr , uint8_t Size , uint8_t *Buff );
+  float brightness_{.50f};
+  float curr_brightness_{-1.0f};
+  AXP2101Model model_;
 };
 
 }
