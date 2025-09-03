@@ -3,11 +3,10 @@
 
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/core/component.h"
 
-#define XPOWERS_CHIP_AXP2101
-#include "XPowersLib.h"
+static constexpr int TFT_DISPOFF = 0x28;
+static constexpr int TFT_DISPON  = 0x29;
 
 namespace esphome {
 namespace axp2101 {
@@ -16,27 +15,10 @@ enum AXP2101Model {
   AXP2101_M5CORE2,
 };
 
-#define SLEEP_MSEC(us) (((uint64_t)us) * 1000L)
-#define SLEEP_SEC(us)  (((uint64_t)us) * 1000000L)
-#define SLEEP_MIN(us)  (((uint64_t)us) * 60L * 1000000L)
-#define SLEEP_HR(us)   (((uint64_t)us) * 60L * 60L * 1000000L)
-
-#define CURRENT_100MA  (0b0000)
-#define CURRENT_190MA  (0b0001)
-#define CURRENT_280MA  (0b0010)
-#define CURRENT_360MA  (0b0011)
-#define CURRENT_450MA  (0b0100)
-#define CURRENT_550MA  (0b0101)
-#define CURRENT_630MA  (0b0110)
-#define CURRENT_700MA  (0b0111)
-
 class AXP2101Component : public PollingComponent, public i2c::I2CDevice {
-public:
-  void set_batteryvoltage_sensor(sensor::Sensor *batteryvoltage_sensor) { batteryvoltage_sensor_ = batteryvoltage_sensor; }
-  void set_batterylevel_sensor(sensor::Sensor *batterylevel_sensor) { batterylevel_sensor_ = batterylevel_sensor; }
-  void set_brightness(float brightness) { brightness_ = brightness; }
 
-  void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
+public:
+  void set_brightness(float brightness) { brightness_ = brightness; }
   void set_model(AXP2101Model model) { this->model_ = model; }
 
   // ========== INTERNAL METHODS ==========
@@ -47,17 +29,13 @@ public:
   float get_setup_priority() const override;
 
 private:
-  int readRegister(uint8_t reg);
-  int writeRegister(uint8_t reg, uint8_t *buf, uint8_t length);
-  uint16_t getBLDO1Voltage(void);
-  bool setBLDO1Voltage(uint16_t millivolt);
-
+  void bitOn(uint8_t reg, uint8_t bit);
+  void bitOff(uint8_t reg, uint8_t bit);
+  void writeRegister8(uint8_t reg, uint8_t data, uint8_t mask);
+  void i2c_write_register8_array(const uint8_t* reg_data_mask);
+  void setBrightness(uint8_t brightness);
 
 protected:
-  sensor::Sensor *batteryvoltage_sensor_;
-  sensor::Sensor *batterylevel_sensor_;
-  binary_sensor::BinarySensor *batterycharging_bsensor_;
-
   float brightness_{.50f};
   float curr_brightness_{-1.0f};
   AXP2101Model model_;
