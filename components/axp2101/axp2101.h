@@ -75,6 +75,12 @@ namespace axp2101 {
 #define AXP2101_IRQ_STATUS1 0x49
 #define AXP2101_IRQ_STATUS2 0x4A
 
+// IRQ bit masks (IRQ_STATUS1 / IRQ_EN1)
+#define AXP2101_PKEY_POSITIVE_IRQ   (1 << 0)  // Power button pressed (falling edge)
+#define AXP2101_PKEY_NEGATIVE_IRQ   (1 << 1)  // Power button released (rising edge)
+#define AXP2101_PKEY_LONG_IRQ       (1 << 2)  // Power button long press
+#define AXP2101_PKEY_SHORT_IRQ      (1 << 3)  // Power button short press
+
 // Battery gauge
 #define AXP2101_BAT_PERCENT 0xA4
 
@@ -116,6 +122,10 @@ public:
 
   void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
   void set_vbusconnected_bsensor(binary_sensor::BinarySensor *vbusconnected_bsensor) { vbusconnected_bsensor_ = vbusconnected_bsensor; }
+  void set_pkey_short_bsensor(binary_sensor::BinarySensor *pkey_short_bsensor) { pkey_short_bsensor_ = pkey_short_bsensor; }
+  void set_pkey_long_bsensor(binary_sensor::BinarySensor *pkey_long_bsensor) { pkey_long_bsensor_ = pkey_long_bsensor; }
+  void set_pkey_positive_bsensor(binary_sensor::BinarySensor *pkey_positive_bsensor) { pkey_positive_bsensor_ = pkey_positive_bsensor; }
+  void set_pkey_negative_bsensor(binary_sensor::BinarySensor *pkey_negative_bsensor) { pkey_negative_bsensor_ = pkey_negative_bsensor; }
   void set_model(AXP2101Model model) { this->model_ = model; }
 
   // ========== INTERNAL METHODS ==========
@@ -134,6 +144,10 @@ protected:
     sensor::Sensor *temperature_sensor_{nullptr};
     binary_sensor::BinarySensor *batterycharging_bsensor_{nullptr};
     binary_sensor::BinarySensor *vbusconnected_bsensor_{nullptr};
+    binary_sensor::BinarySensor *pkey_short_bsensor_{nullptr};
+    binary_sensor::BinarySensor *pkey_long_bsensor_{nullptr};
+    binary_sensor::BinarySensor *pkey_positive_bsensor_{nullptr};
+    binary_sensor::BinarySensor *pkey_negative_bsensor_{nullptr};
     number::Number *brightness_number_{nullptr};
 
     float brightness_{.50f};

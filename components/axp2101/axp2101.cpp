@@ -268,10 +268,34 @@ void AXP2101Component::initInterrupts() {
     writeRegister(AXP2101_IRQ_STATUS1, 0xFF);
     writeRegister(AXP2101_IRQ_STATUS2, 0xFF);
     
-    // Disable all interrupts for now (safer startup)
+    // Disable all interrupts first
     writeRegister(AXP2101_IRQ_EN0, 0x00);
     writeRegister(AXP2101_IRQ_EN1, 0x00);
     writeRegister(AXP2101_IRQ_EN2, 0x00);
+    
+    // Enable power button interrupts if any binary sensors are configured
+    uint8_t irq_en1 = 0x00;
+    if (pkey_short_bsensor_ != nullptr) {
+        irq_en1 |= AXP2101_PKEY_SHORT_IRQ;
+        ESP_LOGD(TAG, "Enabled PKEY short press interrupt");
+    }
+    if (pkey_long_bsensor_ != nullptr) {
+        irq_en1 |= AXP2101_PKEY_LONG_IRQ;
+        ESP_LOGD(TAG, "Enabled PKEY long press interrupt");
+    }
+    if (pkey_positive_bsensor_ != nullptr) {
+        irq_en1 |= AXP2101_PKEY_POSITIVE_IRQ;
+        ESP_LOGD(TAG, "Enabled PKEY positive edge interrupt");
+    }
+    if (pkey_negative_bsensor_ != nullptr) {
+        irq_en1 |= AXP2101_PKEY_NEGATIVE_IRQ;
+        ESP_LOGD(TAG, "Enabled PKEY negative edge interrupt");
+    }
+    
+    if (irq_en1 != 0x00) {
+        writeRegister(AXP2101_IRQ_EN1, irq_en1);
+        ESP_LOGI(TAG, "Power button interrupts enabled: 0x%02X", irq_en1);
+    }
     
     ESP_LOGI(TAG, "Interrupts initialized (polling mode)");
 }
@@ -376,19 +400,57 @@ float AXP2101Component::get_setup_priority() const {
 }
 
 void AXP2101Component::update() {
-    // Check for interrupts
-    if (pmu_flag) {
-        pmu_flag = false;
-        uint8_t irq[3];
-        readRegister(AXP2101_IRQ_STATUS0, &irq[0]);
-        readRegister(AXP2101_IRQ_STATUS1, &irq[1]);
-        readRegister(AXP2101_IRQ_STATUS2, &irq[2]);
+    // Always read interrupt status registers to check for events
+    uint8_t irq[3];
+    readRegister(AXP2101_IRQ_STATUS0, &irq[0]);
+    readRegister(AXP2101_IRQ_STATUS1, &irq[1]);
+    readRegister(AXP2101_IRQ_STATUS2, &irq[2]);
+    
+    // Check for power button events in IRQ_STATUS1
+    if (irq[1] != 0x00) {
+        ESP_LOGD(TAG, "IRQ_STATUS1: 0x%02X", irq[1]);
         
-        ESP_LOGD(TAG, "IRQ: %02X %02X %02X", irq[0], irq[1], irq[2]);
+        // Short press event
+        if ((irq[1] & AXP2101_PKEY_SHORT_IRQ) && pkey_short_bsensor_ != nullptr) {
+            ESP_LOGI(TAG, "Power button short press detected");
+            pkey_short_bsensor_->publish_state(true);
+            // Auto-release after publishing
+            pkey_short_bsensor_->publish_state(false);
+        }
         
-        // Clear interrupt flags
-        writeRegister(AXP2101_IRQ_STATUS0, irq[0]);
+        // Long press event
+        if ((irq[1] & AXP2101_PKEY_LONG_IRQ) && pkey_long_bsensor_ != nullptr) {
+            ESP_LOGI(TAG, "Power button long press detected");
+            pkey_long_bsensor_->publish_state(true);
+            // Auto-release after publishing
+            pkey_long_bsensor_->publish_state(false);
+        }
+        
+        // Positive edge (button pressed down)
+        if ((irq[1] & AXP2101_PKEY_POSITIVE_IRQ) && pkey_positive_bsensor_ != nullptr) {
+            ESP_LOGD(TAG, "Power button pressed (positive edge)");
+            pkey_positive_bsensor_->publish_state(true);
+        }
+        
+        // Negative edge (button released)
+        if ((irq[1] & AXP2101_PKEY_NEGATIVE_IRQ) && pkey_negative_bsensor_ != nullptr) {
+            ESP_LOGD(TAG, "Power button released (negative edge)");
+            pkey_negative_bsensor_->publish_state(false);
+            // Also clear the positive edge sensor if it was set
+            if (pkey_positive_bsensor_ != nullptr) {
+                pkey_positive_bsensor_->publish_state(false);
+            }
+        }
+        
+        // Clear the interrupt flags we just processed
         writeRegister(AXP2101_IRQ_STATUS1, irq[1]);
+    }
+    
+    // Clear other interrupt flags if present
+    if (irq[0] != 0x00) {
+        writeRegister(AXP2101_IRQ_STATUS0, irq[0]);
+    }
+    if (irq[2] != 0x00) {
         writeRegister(AXP2101_IRQ_STATUS2, irq[2]);
     }
     

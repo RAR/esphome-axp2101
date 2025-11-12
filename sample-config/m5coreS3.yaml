@@ -62,8 +62,6 @@ sensor:
       name: "Battery Voltage"
     battery_level:
       name: "Battery Level"
-    battery_charging:
-      name: "Battery Charging"
     temperature:
       name: "PMU Temperature"
 
@@ -82,6 +80,28 @@ touchscreen:
           args: [touch.id, touch.x, touch.y]
 
 binary_sensor:
+  # AXP2101 binary sensors
+  - platform: axp2101
+    axp2101_id: axp2101_component
+    battery_charging:
+      name: "Battery Charging"
+    vbus_connected:
+      name: "USB Connected"
+    pkey_short_press:
+      name: "Power Button Short Press"
+      on_press:
+        - logger.log: "Power button short press!"
+    pkey_long_press:
+      name: "Power Button Long Press"
+      on_press:
+        - logger.log: "Power button long press!"
+    # Optional: Track button state with positive/negative edges
+    # pkey_positive:
+    #   name: "Power Button Pressed"
+    # pkey_negative:
+    #   name: "Power Button Released"
+
+  # Touchscreen buttons
   - platform: touchscreen
     name: Left Touch Button
     x_min: 0

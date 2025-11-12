@@ -50,8 +50,6 @@ sensor:
       name: "Battery Voltage"
     battery_level:
       name: "Battery Level"
-    battery_charging:
-      name: "Battery Charging"
     temperature:
       name: "PMU Temperature"
 ```
@@ -59,10 +57,49 @@ sensor:
 **Available Sensors:**
 - `battery_voltage` - Battery voltage in volts (V)
 - `battery_level` - Battery level percentage (0-100%)
-- `battery_charging` - Binary sensor indicating charging status
 - `temperature` - Internal PMU die temperature in °C
 
 **Note:** VBUS (USB power) monitoring is not available on M5Stack Core2 V1.1 hardware as USB power does not route through the AXP2101's VBUS detection circuitry.
+
+### Binary Sensors
+
+Add binary sensors for charging status and power button events:
+
+```yaml
+binary_sensor:
+  - platform: axp2101
+    axp2101_id: axp2101_component
+    battery_charging:
+      name: "Battery Charging"
+    vbus_connected:
+      name: "USB Connected"
+    pkey_short_press:
+      name: "Power Button Short Press"
+      on_press:
+        - logger.log: "Power button short press!"
+    pkey_long_press:
+      name: "Power Button Long Press"
+      on_press:
+        - logger.log: "Power button long press!"
+    # Optional: Track button state with positive/negative edges
+    # pkey_positive:
+    #   name: "Power Button Pressed"
+    # pkey_negative:
+    #   name: "Power Button Released"
+```
+
+**Available Binary Sensors:**
+- `battery_charging` - On when battery is charging
+- `vbus_connected` - On when USB power is connected
+- `pkey_short_press` - Momentary trigger on short button press
+- `pkey_long_press` - Momentary trigger on long button press (typically 1-2 seconds)
+- `pkey_positive` - On when button is pressed down (optional)
+- `pkey_negative` - On when button is released (optional)
+
+**Power Button Events:**
+The power button binary sensors are momentary - they trigger briefly when the event occurs and then reset. This makes them ideal for automation triggers. Use `on_press` actions to respond to button events.
+
+For tracking the actual button state (pressed vs released), use the optional `pkey_positive` and `pkey_negative` sensors.
 
 ### Brightness Control (Home Assistant)
 
@@ -117,9 +154,16 @@ display:
 ### Power Monitoring
 - Battery voltage and level with 14-bit ADC precision
 - Charging status detection
+- USB power connection detection
 - Internal temperature monitoring for thermal management
 
 **Note:** USB/VBUS monitoring is not supported on M5Stack Core2 V1.1 as the hardware does not route USB power through the AXP2101's VBUS detection pins.
+
+### Power Button Events
+- Short press detection (momentary trigger)
+- Long press detection (momentary trigger, typically 1-2 seconds)
+- Button state tracking (pressed/released)
+- Interrupt-based detection for reliable event capture
 
 ### Backlight Control
 - Adjustable brightness (0-100%) via Home Assistant
