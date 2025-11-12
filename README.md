@@ -73,6 +73,14 @@ binary_sensor:
       name: "Battery Charging"
     vbus_connected:
       name: "USB Connected"
+    low_battery_level1:
+      name: "Low Battery Warning"
+      on_press:
+        - logger.log: "Low battery warning!"
+    low_battery_level2:
+      name: "Critical Battery Warning"
+      on_press:
+        - logger.log: "Critical battery!"
     pkey_short_press:
       name: "Power Button Short Press"
       on_press:
@@ -91,10 +99,15 @@ binary_sensor:
 **Available Binary Sensors:**
 - `battery_charging` - On when battery is charging
 - `vbus_connected` - On when USB power is connected
+- `low_battery_level1` - Warning when battery drops below ~15%
+- `low_battery_level2` - Critical warning when battery drops below ~5%
 - `pkey_short_press` - Momentary trigger on short button press
 - `pkey_long_press` - Momentary trigger on long button press (typically 1-2 seconds)
 - `pkey_positive` - On when button is pressed down (optional)
 - `pkey_negative` - On when button is released (optional)
+
+**Low Battery Warnings:**
+The low battery sensors use hardware interrupts from the AXP2101 to detect when the battery level drops below predefined thresholds (~15% and ~5%). These sensors automatically clear when the battery is charged above the threshold. Use these with automation to trigger warnings or power-saving modes.
 
 **Power Button Events:**
 The power button binary sensors are momentary - they trigger briefly when the event occurs and then reset. This makes them ideal for automation triggers. Use `on_press` actions to respond to button events.
@@ -105,7 +118,7 @@ For tracking the actual button state (pressed vs released), use the optional `pk
 
 ### Brightness Control (Home Assistant)
 
-Add number platform for interactive brightness control:
+Add number platform for interactive brightness control and charging LED mode:
 
 ```yaml
 number:
@@ -113,9 +126,20 @@ number:
     axp2101_id: axp2101_component
     backlight:
       name: "Backlight Brightness"
+    charging_led_mode:
+      name: "Charging LED Mode"
 ```
 
-This creates a 0-100% slider in Home Assistant that controls the display backlight brightness in real-time.
+**Available Number Entities:**
+- `backlight` - Display backlight brightness slider (0-100%)
+- `charging_led_mode` - Charging LED behavior control (0-4)
+  - 0: Off
+  - 1: Blink 1Hz
+  - 2: Blink 4Hz
+  - 3: On (solid)
+  - 4: Auto (controlled by charger)
+
+The backlight creates a 0-100% slider in Home Assistant that controls the display backlight brightness in real-time. The charging LED mode allows you to customize the LED behavior, either manually or automatically based on charging status.
 
 ### Complete Example
 
@@ -166,6 +190,17 @@ display:
 - Long press detection (momentary trigger, typically 1-2 seconds)
 - Button state tracking (pressed/released)
 - Interrupt-based detection for reliable event capture
+
+### Low Battery Warnings
+- Level 1 warning (~15% battery) - Early warning
+- Level 2 warning (~5% battery) - Critical warning
+- Hardware interrupt-based detection
+- Auto-clears when battery is recharged
+
+### Charging LED Control
+- 5 modes: Off, Blink 1Hz, Blink 4Hz, On (solid), Auto
+- Manual control or automatic control by charger
+- Real-time mode switching via Home Assistant
 
 ### Backlight Control
 - Adjustable brightness (0-100%) via Home Assistant

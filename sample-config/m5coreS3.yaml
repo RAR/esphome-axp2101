@@ -70,6 +70,9 @@ number:
     axp2101_id: axp2101_component
     backlight:
       name: "Backlight Brightness"
+    charging_led_mode:
+      name: "Charging LED Mode"
+      # Modes: 0=Off, 1=Blink 1Hz, 2=Blink 4Hz, 3=On, 4=Auto (controlled by charger)
 
 touchscreen:
   - platform: ft63x6
@@ -87,6 +90,16 @@ binary_sensor:
       name: "Battery Charging"
     vbus_connected:
       name: "USB Connected"
+    low_battery_level1:
+      name: "Low Battery Warning"
+      # Triggers when battery level drops below ~15%
+      on_press:
+        - logger.log: "Low battery warning (level 1)!"
+    low_battery_level2:
+      name: "Critical Battery Warning"
+      # Triggers when battery level drops below ~5%
+      on_press:
+        - logger.log: "Critical battery warning (level 2)!"
     pkey_short_press:
       name: "Power Button Short Press"
       on_press:

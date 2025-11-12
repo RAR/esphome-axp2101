@@ -75,11 +75,18 @@ namespace axp2101 {
 #define AXP2101_IRQ_STATUS1 0x49
 #define AXP2101_IRQ_STATUS2 0x4A
 
+// IRQ bit masks (IRQ_STATUS0 / IRQ_EN0)
+#define AXP2101_WARNING_LEVEL1_IRQ  (1 << 6)  // Battery level drops to warning level 1
+#define AXP2101_WARNING_LEVEL2_IRQ  (1 << 7)  // Battery level drops to warning level 2
+
 // IRQ bit masks (IRQ_STATUS1 / IRQ_EN1)
 #define AXP2101_PKEY_POSITIVE_IRQ   (1 << 0)  // Power button pressed (falling edge)
 #define AXP2101_PKEY_NEGATIVE_IRQ   (1 << 1)  // Power button released (rising edge)
 #define AXP2101_PKEY_LONG_IRQ       (1 << 2)  // Power button long press
 #define AXP2101_PKEY_SHORT_IRQ      (1 << 3)  // Power button short press
+
+// Charging LED control
+#define AXP2101_CHGLED_SET_CTRL 0x69
 
 // Battery gauge
 #define AXP2101_BAT_PERCENT 0xA4
@@ -126,7 +133,14 @@ public:
   void set_pkey_long_bsensor(binary_sensor::BinarySensor *pkey_long_bsensor) { pkey_long_bsensor_ = pkey_long_bsensor; }
   void set_pkey_positive_bsensor(binary_sensor::BinarySensor *pkey_positive_bsensor) { pkey_positive_bsensor_ = pkey_positive_bsensor; }
   void set_pkey_negative_bsensor(binary_sensor::BinarySensor *pkey_negative_bsensor) { pkey_negative_bsensor_ = pkey_negative_bsensor; }
+  void set_low_battery_level1_bsensor(binary_sensor::BinarySensor *low_battery_level1_bsensor) { low_battery_level1_bsensor_ = low_battery_level1_bsensor; }
+  void set_low_battery_level2_bsensor(binary_sensor::BinarySensor *low_battery_level2_bsensor) { low_battery_level2_bsensor_ = low_battery_level2_bsensor; }
   void set_model(AXP2101Model model) { this->model_ = model; }
+  void set_charging_led_number(number::Number *charging_led_number) { charging_led_number_ = charging_led_number; }
+
+  // Charging LED control
+  void setChargingLedMode(uint8_t mode);  // 0=Off, 1=Blink 1Hz, 2=Blink 4Hz, 3=On, 4=Auto
+  uint8_t getChargingLedMode();
 
   // ========== INTERNAL METHODS ==========
   void setup() override;
@@ -148,7 +162,10 @@ protected:
     binary_sensor::BinarySensor *pkey_long_bsensor_{nullptr};
     binary_sensor::BinarySensor *pkey_positive_bsensor_{nullptr};
     binary_sensor::BinarySensor *pkey_negative_bsensor_{nullptr};
+    binary_sensor::BinarySensor *low_battery_level1_bsensor_{nullptr};
+    binary_sensor::BinarySensor *low_battery_level2_bsensor_{nullptr};
     number::Number *brightness_number_{nullptr};
+    number::Number *charging_led_number_{nullptr};
 
     float brightness_{.50f};
     float curr_brightness_{-1.0f};
