@@ -4,7 +4,9 @@ from esphome.components import i2c
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["i2c"]
-AUTO_LOAD = ["sensor", "binary_sensor", "number"]
+AUTO_LOAD = ["sensor", "binary_sensor", "number", "output"]
+
+CONF_AXP2101_ID = "axp2101_id"
 
 axp2101_ns = cg.esphome_ns.namespace("axp2101")
 AXP2101Component = axp2101_ns.class_(

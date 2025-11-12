@@ -27,6 +27,7 @@ AXP2101Model = axp2101_ns.enum("AXP2101Model")
 
 MODELS = {
     "M5CORE2": AXP2101Model.AXP2101_M5CORE2,
+    "M5CORES3": AXP2101Model.AXP2101_M5CORES3,
 }
 
 AXP2101_MODEL = cv.enum(MODELS, upper=True, space="_")

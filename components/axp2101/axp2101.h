@@ -102,6 +102,7 @@ namespace axp2101 {
 
 enum AXP2101Model {
   AXP2101_M5CORE2,
+  AXP2101_M5CORES3,
 };
 
 #define SLEEP_MSEC(us) (((uint64_t)us) * 1000L)

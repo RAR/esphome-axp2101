@@ -263,10 +263,20 @@ void AXP2101Component::initPowerOutputs() {
     setBLDOVoltage(0, 3300);  // BLDO1: Backlight
     
     // Ensure BLDO1 is enabled for backlight
-    if (!(ldo_state0 & (1 << 4))) {
+    bool bldo1_enabled = (ldo_state0 & (1 << 4));
+    ESP_LOGD(TAG, "BLDO1 status: %s (bit 4 = %d)", bldo1_enabled ? "ENABLED" : "DISABLED", bldo1_enabled);
+    
+    if (!bldo1_enabled) {
         ESP_LOGD(TAG, "Enabling BLDO1...");
         enableBLDO(0, true);
+    } else {
+        ESP_LOGD(TAG, "BLDO1 already enabled, verifying voltage is set...");
     }
+    
+    // Read back to verify
+    uint8_t bldo1_voltage;
+    readRegister(AXP2101_BLDO_VOL0, &bldo1_voltage);
+    ESP_LOGD(TAG, "BLDO1 voltage register: 0x%02X (%d mV)", bldo1_voltage, (bldo1_voltage * 100) + 500);
     
     ESP_LOGI(TAG, "Power outputs initialized (conservative mode)");
 }
