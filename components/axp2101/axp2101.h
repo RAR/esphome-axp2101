@@ -109,10 +109,13 @@ class AXP2101Component : public PollingComponent, public i2c::I2CDevice {
 public:
   void set_batteryvoltage_sensor(sensor::Sensor *batteryvoltage_sensor) { batteryvoltage_sensor_ = batteryvoltage_sensor; }
   void set_batterylevel_sensor(sensor::Sensor *batterylevel_sensor) { batterylevel_sensor_ = batterylevel_sensor; }
+  void set_vbusvoltage_sensor(sensor::Sensor *vbusvoltage_sensor) { vbusvoltage_sensor_ = vbusvoltage_sensor; }
+  void set_temperature_sensor(sensor::Sensor *temperature_sensor) { temperature_sensor_ = temperature_sensor; }
   void set_brightness(float brightness) { brightness_ = brightness; UpdateBrightness(); }
   void set_brightness_number(number::Number *brightness_number) { brightness_number_ = brightness_number; }
 
   void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
+  void set_vbusconnected_bsensor(binary_sensor::BinarySensor *vbusconnected_bsensor) { vbusconnected_bsensor_ = vbusconnected_bsensor; }
   void set_model(AXP2101Model model) { this->model_ = model; }
 
   // ========== INTERNAL METHODS ==========
@@ -127,7 +130,10 @@ private:
 protected:
     sensor::Sensor *batteryvoltage_sensor_{nullptr};
     sensor::Sensor *batterylevel_sensor_{nullptr};
+    sensor::Sensor *vbusvoltage_sensor_{nullptr};
+    sensor::Sensor *temperature_sensor_{nullptr};
     binary_sensor::BinarySensor *batterycharging_bsensor_{nullptr};
+    binary_sensor::BinarySensor *vbusconnected_bsensor_{nullptr};
     number::Number *brightness_number_{nullptr};
 
     float brightness_{.50f};
@@ -163,6 +169,8 @@ protected:
     bool isCharging();
     bool isBatteryConnected();
     bool isVBUSGood();
+    uint16_t getVBUSVoltage();  // Returns mV
+    float getTemperature();  // Returns °C
     uint8_t getChipID();
     
     // DC-DC converter control

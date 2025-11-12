@@ -52,7 +52,17 @@ sensor:
       name: "Battery Level"
     battery_charging:
       name: "Battery Charging"
+    temperature:
+      name: "PMU Temperature"
 ```
+
+**Available Sensors:**
+- `battery_voltage` - Battery voltage in volts (V)
+- `battery_level` - Battery level percentage (0-100%)
+- `battery_charging` - Binary sensor indicating charging status
+- `temperature` - Internal PMU die temperature in °C
+
+**Note:** VBUS (USB power) monitoring is not available on M5Stack Core2 V1.1 hardware as USB power does not route through the AXP2101's VBUS detection circuitry.
 
 ### Brightness Control (Home Assistant)
 
@@ -98,4 +108,25 @@ display:
 - **Chip IDs:** 0x47, 0x4A (both supported)
 - **Backlight Control:** BLDO1 regulator (2500-3300mV)
 - **Battery ADC:** 14-bit resolution, 1.1mV LSB
+- **VBUS ADC:** 14-bit resolution, 1.1mV LSB
+- **Temperature Range:** Internal die temperature monitoring
 - **Framework:** ESP-IDF (no Arduino dependencies)
+
+## Features
+
+### Power Monitoring
+- Battery voltage and level with 14-bit ADC precision
+- Charging status detection
+- Internal temperature monitoring for thermal management
+
+**Note:** USB/VBUS monitoring is not supported on M5Stack Core2 V1.1 as the hardware does not route USB power through the AXP2101's VBUS detection pins.
+
+### Backlight Control
+- Adjustable brightness (0-100%) via Home Assistant
+- Voltage-based control (2500-3300mV)
+- Real-time brightness adjustment
+
+### Power Management
+- Conservative initialization to prevent system crashes
+- Support for multiple chip ID variants
+- Direct I2C register access for reliability

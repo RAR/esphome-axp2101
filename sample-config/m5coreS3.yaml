@@ -64,6 +64,8 @@ sensor:
       name: "Battery Level"
     battery_charging:
       name: "Battery Charging"
+    temperature:
+      name: "PMU Temperature"
 
 number:
   - platform: axp2101

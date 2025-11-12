@@ -165,9 +165,42 @@ bool AXP2101Component::isBatteryConnected() {
 bool AXP2101Component::isVBUSGood() {
     uint8_t status = 0;
     if (!readRegister(AXP2101_COMM_STAT0, &status)) {
+        ESP_LOGW(TAG, "Failed to read status register for VBUS check");
         return false;
     }
-    return (status & 0x20) != 0;  // Bit 5: VBUS good
+    ESP_LOGD(TAG, "COMM_STAT0 register: 0x%02X", status);
+    // Check multiple status bits for VBUS presence
+    // Bit 5: VBUS good status
+    // Bit 7: VBUS present
+    bool vbus_good = (status & 0x20) != 0;
+    bool vbus_present = (status & 0x80) != 0;
+    ESP_LOGD(TAG, "VBUS good bit: %d, VBUS present bit: %d", vbus_good, vbus_present);
+    return vbus_good || vbus_present;
+}
+
+uint16_t AXP2101Component::getVBUSVoltage() {
+    uint8_t data[2];
+    if (!readRegisterMulti(AXP2101_VBUS_H, data, 2)) {
+        ESP_LOGW(TAG, "Failed to read VBUS voltage registers");
+        return 0;
+    }
+    // 14-bit value, LSB = 1.1mV (same as battery voltage)
+    uint16_t raw = ((uint16_t)data[0] << 6) | (data[1] & 0x3F);
+    ESP_LOGD(TAG, "VBUS raw ADC: %d (H:0x%02X L:0x%02X)", raw, data[0], data[1]);
+    return (uint16_t)((float)raw * 1.1f);
+}
+
+float AXP2101Component::getTemperature() {
+    uint8_t data[2];
+    if (!readRegisterMulti(AXP2101_TS_H, data, 2)) {
+        return 0.0f;
+    }
+    // 14-bit value
+    uint16_t raw = ((uint16_t)data[0] << 6) | (data[1] & 0x3F);
+    // Formula from AXP2101 datasheet: T = 22 - (7274 - raw) / 20
+    // This gives internal die temperature in °C
+    float temp = 22.0f - (7274.0f - (float)raw) / 20.0f;
+    return temp;
 }
 
 void AXP2101Component::initPowerOutputs() {
@@ -205,11 +238,18 @@ void AXP2101Component::initCharger() {
     readRegister(AXP2101_ADC_ENABLE, &adc_state);
     ESP_LOGD(TAG, "Current ADC state: 0x%02X", adc_state);
     
-    // Disable TS pin detection (no battery temperature sensor)
-    clearBits(AXP2101_ADC_ENABLE, 0x01);
+    // Enable ADC for battery, VBUS, and temperature monitoring
+    // Bit 7: VBAT, Bit 1: VBUS, Bit 0: TS (die temperature)
+    // Note: Die temperature and TS pin are different - bit 0 is for internal die temp
+    setBits(AXP2101_ADC_ENABLE, 0x83);  // Enable VBAT (0x80), VBUS (0x02), and die temp (0x01)
     
-    // Enable ADC for battery and VBUS monitoring
-    setBits(AXP2101_ADC_ENABLE, 0x82);  // Enable VBAT and VBUS ADC
+    // Verify ADC settings
+    readRegister(AXP2101_ADC_ENABLE, &adc_state);
+    ESP_LOGI(TAG, "ADC enabled - state: 0x%02X (VBAT:%d VBUS:%d TEMP:%d)", 
+             adc_state, 
+             (adc_state & 0x80) ? 1 : 0,
+             (adc_state & 0x02) ? 1 : 0, 
+             (adc_state & 0x01) ? 1 : 0);
     
     // Note: Not modifying VBUS limits, charge current, etc. as they may already be
     // configured by the bootloader/hardware. This is safer for initial setup.
@@ -325,6 +365,9 @@ void AXP2101Component::dump_config() {
     LOG_SENSOR("  ", "Battery Voltage", this->batteryvoltage_sensor_);
     LOG_SENSOR("  ", "Battery Level", this->batterylevel_sensor_);
     LOG_BINARY_SENSOR("  ", "Battery Charging", this->batterycharging_bsensor_);
+    LOG_SENSOR("  ", "VBUS Voltage", this->vbusvoltage_sensor_);
+    LOG_BINARY_SENSOR("  ", "VBUS Connected", this->vbusconnected_bsensor_);
+    LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);
     ESP_LOGCONFIG(TAG, "  Brightness: %.0f%%", this->brightness_ * 100.0f);
 }
 
@@ -382,6 +425,28 @@ void AXP2101Component::update() {
         bool charging = isCharging();
         ESP_LOGD(TAG, "Battery Charging: %s", charging ? "Yes" : "No");
         this->batterycharging_bsensor_->publish_state(charging);
+    }
+    
+    // Update VBUS voltage
+    if (this->vbusvoltage_sensor_ != nullptr) {
+        uint16_t vbus_mv = getVBUSVoltage();
+        float vbus_v = vbus_mv / 1000.0f;
+        ESP_LOGD(TAG, "VBUS Voltage: %.3fV (%dmV)", vbus_v, vbus_mv);
+        this->vbusvoltage_sensor_->publish_state(vbus_v);
+    }
+    
+    // Update VBUS connected status
+    if (this->vbusconnected_bsensor_ != nullptr) {
+        bool vbus_good = isVBUSGood();
+        ESP_LOGD(TAG, "VBUS Connected: %s", vbus_good ? "Yes" : "No");
+        this->vbusconnected_bsensor_->publish_state(vbus_good);
+    }
+    
+    // Update temperature
+    if (this->temperature_sensor_ != nullptr) {
+        float temp = getTemperature();
+        ESP_LOGD(TAG, "Temperature: %.1f°C", temp);
+        this->temperature_sensor_->publish_state(temp);
     }
     
     // Update brightness
