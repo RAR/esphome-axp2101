@@ -5,10 +5,10 @@ esphome:
 esp32:
   board: m5stack-core2
   framework:
-    type: arduino
+    type: esp-idf
 
 external_components:
-  - source: github://stefanthoss/esphome-axp2101
+  - source: github://RAR/esphome-axp2101
     components: [ axp2101 ]
 
 # Enable logging
@@ -47,6 +47,10 @@ i2c:
     scl: GPIO22
     scan: True
 
+axp2101:
+  id: axp2101_component
+  update_interval: 60s
+
 sensor:
   - platform: axp2101
     model: M5CORE2
@@ -60,6 +64,12 @@ sensor:
       name: "Battery Level"
     battery_charging:
       name: "Battery Charging"
+
+number:
+  - platform: axp2101
+    axp2101_id: axp2101_component
+    backlight:
+      name: "Backlight Brightness"
 
   - platform: mpu6886
     address: 0x68
