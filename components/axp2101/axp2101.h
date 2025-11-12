@@ -7,6 +7,13 @@
 #include "esphome/core/component.h"
 #include "driver/gpio.h"
 
+// Forward declaration
+namespace esphome {
+namespace number {
+class Number;
+}
+}
+
 namespace esphome {
 namespace axp2101 {
 
@@ -103,6 +110,7 @@ public:
   void set_batteryvoltage_sensor(sensor::Sensor *batteryvoltage_sensor) { batteryvoltage_sensor_ = batteryvoltage_sensor; }
   void set_batterylevel_sensor(sensor::Sensor *batterylevel_sensor) { batterylevel_sensor_ = batterylevel_sensor; }
   void set_brightness(float brightness) { brightness_ = brightness; UpdateBrightness(); }
+  void set_brightness_number(number::Number *brightness_number) { brightness_number_ = brightness_number; }
 
   void set_batterycharging_bsensor(binary_sensor::BinarySensor *batterycharging_bsensor) { batterycharging_bsensor_ = batterycharging_bsensor; }
   void set_model(AXP2101Model model) { this->model_ = model; }
@@ -120,6 +128,7 @@ protected:
     sensor::Sensor *batteryvoltage_sensor_{nullptr};
     sensor::Sensor *batterylevel_sensor_{nullptr};
     binary_sensor::BinarySensor *batterycharging_bsensor_{nullptr};
+    number::Number *brightness_number_{nullptr};
 
     float brightness_{.50f};
     float curr_brightness_{-1.0f};

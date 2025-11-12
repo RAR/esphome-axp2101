@@ -1,0 +1,21 @@
+#include "number.h"
+#include "esphome/core/log.h"
+
+namespace esphome {
+namespace axp2101 {
+
+static const char *const TAG = "axp2101.number";
+
+void AXP2101Number::dump_config() {
+  LOG_NUMBER("", "AXP2101 Backlight", this);
+}
+
+void AXP2101Number::control(float value) {
+  // Convert percentage (0-100) to float (0.0-1.0)
+  float brightness = value / 100.0f;
+  this->parent_->set_brightness(brightness);
+  this->publish_state(value);
+}
+
+}  // namespace axp2101
+}  // namespace esphome

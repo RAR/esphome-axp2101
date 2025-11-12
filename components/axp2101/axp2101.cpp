@@ -1,5 +1,6 @@
 #include "axp2101.h"
 #include "esphome/core/log.h"
+#include "esphome/components/number/number.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
 
@@ -302,6 +303,11 @@ void AXP2101Component::setup() {
     initPowerOutputs();
     initCharger();
     initInterrupts();
+    
+    // Publish initial brightness to number component if set
+    if (this->brightness_number_ != nullptr) {
+        this->brightness_number_->publish_state(this->brightness_ * 100.0f);
+    }
     
     ESP_LOGCONFIG(TAG, "AXP2101 setup complete");
 }

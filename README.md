@@ -1,28 +1,42 @@
 # ESPHome AXP2101 Component
 
-This custom component implements AXP2101 support for the [M5Stack Core2 V1.1](https://docs.m5stack.com/en/core/Core2%20v1.1), building on top of https://github.com/martydingo/esphome-axp192 and https://github.com/lewisxhe/XPowersLib. The [Core2 V1.1](https://docs.m5stack.com/en/core/Core2%20v1.1) uses an AXP2101 while the older Core2 uses an AXP192.
+This custom component provides **ESP-IDF native** support for the AXP2101 power management IC used in the [M5Stack Core2 V1.1](https://docs.m5stack.com/en/core/Core2%20v1.1). This is a complete rewrite using direct I2C register access instead of Arduino libraries, making it compatible with ESP-IDF framework projects.
 
-*This component does not offer full functionality yet, it only covers part of the AXP2101 features and is not fully tested.*  
+**Key Features:**
+- ESP-IDF native implementation (no Arduino framework required)
+- Direct I2C register access (no XPowersLib dependency)
+- Battery monitoring (voltage, level, charging status)
+- Backlight brightness control with Home Assistant integration
+- Conservative power management to prevent system crashes
+- Support for AXP2101 chip ID variants (0x47, 0x4A)
+
+*Note: This component provides core functionality for the AXP2101. Additional features can be added as needed.*
 
 ## Installation
 
-Copy the components to a custom_components directory next to your .yaml configuration file, or include directly from this repository.
+Copy the `components` directory to your ESPHome project, or include directly from this repository.
 
 ## Configuration
 
-Sample configurations are found in the `/sample-config` folder.
+### Basic Component Setup
 
-This component adds a new model configuration to the AXP2101 sensor which determines which registers are needed for each device. The only available model is `model: M5CORE2`.
-
-### Include AXP2101 Component
+First, define the main AXP2101 component:
 
 ```yaml
-external_components:
-  - source: github://stefanthoss/esphome-axp2101
-    components: [ axp2101 ]
+i2c:
+  - id: bus_a
+    sda: GPIO21
+    scl: GPIO22
+    scan: true
+
+axp2101:
+  id: axp2101_component
+  update_interval: 60s
 ```
 
-### M5Stack Core2 V1.1
+### Battery Monitoring
+
+Add sensor platform for battery metrics:
 
 ```yaml
 sensor:
@@ -40,7 +54,27 @@ sensor:
       name: "Battery Charging"
 ```
 
-The display component required for the M5Stack Core2 V1.1 is as follows:
+### Brightness Control (Home Assistant)
+
+Add number platform for interactive brightness control:
+
+```yaml
+number:
+  - platform: axp2101
+    axp2101_id: axp2101_component
+    backlight:
+      name: "Backlight Brightness"
+```
+
+This creates a 0-100% slider in Home Assistant that controls the display backlight brightness in real-time.
+
+### Complete Example
+
+See `/sample-config` folder for complete device configurations.
+
+### Display Configuration
+
+The M5Stack Core2 V1.1 uses an ILI9341 display:
 
 ```yaml
 font:
@@ -57,3 +91,11 @@ display:
     lambda: |-
       it.print(0, 0, id(roboto), "Hello World");
 ```
+
+## Technical Details
+
+- **I2C Address:** 0x34
+- **Chip IDs:** 0x47, 0x4A (both supported)
+- **Backlight Control:** BLDO1 regulator (2500-3300mV)
+- **Battery ADC:** 14-bit resolution, 1.1mV LSB
+- **Framework:** ESP-IDF (no Arduino dependencies)
