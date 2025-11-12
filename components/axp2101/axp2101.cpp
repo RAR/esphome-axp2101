@@ -1,840 +1,470 @@
 #include "axp2101.h"
-#include "esp_sleep.h"
 #include "esphome/core/log.h"
+#include "esp_sleep.h"
 #include "driver/gpio.h"
-
-//#include "Arduino.h"
-
-#ifndef CONFIG_PMU_SDA
-#define CONFIG_PMU_SDA 21
-#endif
-
-#ifndef CONFIG_PMU_SCL
-#define CONFIG_PMU_SCL 22
-#endif
-
-#ifndef CONFIG_PMU_IRQ
-#define CONFIG_PMU_IRQ 35
-#endif
-
-bool  pmu_flag = 0;
-XPowersPMU PMU;
-
-const uint8_t i2c_sda = CONFIG_PMU_SDA;
-const uint8_t i2c_scl = CONFIG_PMU_SCL;
-
-void setFlag(void* arg)
-{
-    pmu_flag = true;
-}
 
 namespace esphome {
 namespace axp2101 {
 
 static const char *TAG = "axp2101.sensor";
+static bool pmu_flag = false;
 
-void AXP2101Component::setup()
-{
-    ESP_LOGCONFIG(TAG, "getID:0x%x", PMU.getChipID());
+void IRAM_ATTR axp2101_isr_handler(void* arg) {
+    pmu_flag = true;
+}
 
-    // Set the minimum common working voltage of the PMU VBUS input,
-    // below this value will turn off the PMU
-    PMU.setVbusVoltageLimit(XPOWERS_AXP2101_VBUS_VOL_LIM_4V36);
+// Helper methods for register access
+bool AXP2101Component::writeRegister(uint8_t reg, uint8_t value) {
+    return this->write_byte(reg, value);
+}
 
-    // Set the maximum current of the PMU VBUS input,
-    // higher than this value will turn off the PMU
-    PMU.setVbusCurrentLimit(XPOWERS_AXP2101_VBUS_CUR_LIM_1500MA);
+bool AXP2101Component::readRegister(uint8_t reg, uint8_t *value) {
+    return this->read_byte(reg, value);
+}
 
+bool AXP2101Component::readRegisterMulti(uint8_t reg, uint8_t *data, size_t len) {
+    return this->read_bytes(reg, data, len);
+}
 
-    // Get the VSYS shutdown voltage
-    uint16_t vol = PMU.getSysPowerDownVoltage();
-    ESP_LOGCONFIG(TAG, "->  getSysPowerDownVoltage:%u", vol);
+bool AXP2101Component::setBits(uint8_t reg, uint8_t mask) {
+    uint8_t value;
+    if (!readRegister(reg, &value)) return false;
+    value |= mask;
+    return writeRegister(reg, value);
+}
 
-    // Set VSY off voltage as 2600mV , Adjustment range 2600mV ~ 3300mV
-    PMU.setSysPowerDownVoltage(2600);
+bool AXP2101Component::clearBits(uint8_t reg, uint8_t mask) {
+    uint8_t value;
+    if (!readRegister(reg, &value)) return false;
+    value &= ~mask;
+    return writeRegister(reg, value);
+}
 
-    vol = PMU.getSysPowerDownVoltage();
-    ESP_LOGCONFIG(TAG, "->  getSysPowerDownVoltage:%u", vol);
+uint8_t AXP2101Component::getChipID() {
+    uint8_t chip_id = 0;
+    readRegister(AXP2101_CHIP_ID, &chip_id);
+    return chip_id;
+}
 
-
-    // DC1 IMAX=2A
-    // 1500~3400mV,100mV/step,20steps
-    PMU.setDC1Voltage(3300);
-    ESP_LOGCONFIG(TAG, "DC1  : %s   Voltage:%u mV",  PMU.isEnableDC1()  ? "+" : "-", PMU.getDC1Voltage());
-
-    // DC2 IMAX=2A
-    // 500~1200mV  10mV/step,71steps
-    // 1220~1540mV 20mV/step,17steps
-    PMU.setDC2Voltage(1000);
-    ESP_LOGCONFIG(TAG, "DC2  : %s   Voltage:%u mV",  PMU.isEnableDC2()  ? "+" : "-", PMU.getDC2Voltage());
-
-    // DC3 IMAX = 2A
-    // 500~1200mV,10mV/step,71steps
-    // 1220~1540mV,20mV/step,17steps
-    // 1600~3400mV,100mV/step,19steps
-    PMU.setDC3Voltage(3300);
-    ESP_LOGCONFIG(TAG, "DC3  : %s   Voltage:%u mV",  PMU.isEnableDC3()  ? "+" : "-", PMU.getDC3Voltage());
-
-    // DCDC4 IMAX=1.5A
-    // 500~1200mV,10mV/step,71steps
-    // 1220~1840mV,20mV/step,32steps
-    PMU.setDC4Voltage(1000);
-    ESP_LOGCONFIG(TAG, "DC4  : %s   Voltage:%u mV",  PMU.isEnableDC4()  ? "+" : "-", PMU.getDC4Voltage());
-
-    // DC5 IMAX=2A
-    // 1200mV
-    // 1400~3700mV,100mV/step,24steps
-    PMU.setDC5Voltage(3300);
-    ESP_LOGCONFIG(TAG, "DC5  : %s   Voltage:%u mV",  PMU.isEnableDC5()  ? "+" : "-", PMU.getDC5Voltage());
-
-    //ALDO1 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    PMU.setALDO1Voltage(3300);
-
-    //ALDO2 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    PMU.setALDO2Voltage(3300);
-
-    //ALDO3 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    // PMU.setALDO3Voltage(3300);
-
-    //ALDO4 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    PMU.setALDO4Voltage(3300);
-
-    //BLDO1 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    PMU.setBLDO1Voltage(3300);
-
-    //BLDO2 IMAX=300mA
-    //500~3500mV, 100mV/step,31steps
-    PMU.setBLDO2Voltage(3300);
-
-    //CPUSLDO IMAX=30mA
-    //500~1400mV,50mV/step,19steps
-    PMU.setCPUSLDOVoltage(1000);
-
-    //DLDO1 IMAX=300mA
-    //500~3400mV, 100mV/step,29steps
-    // PMU.setDLDO1Voltage(3300);
-
-    //DLDO2 IMAX=300mA
-    //500~1400mV, 50mV/step,2steps
-    // PMU.setDLDO2Voltage(3300);
-
-
-    // PMU.enableDC1();
-    PMU.enableDC2();
-    PMU.enableDC3();
-    PMU.enableDC4();
-    PMU.enableDC5();
-    PMU.enableALDO1();
-    PMU.enableALDO2();
-    // PMU.enableALDO3(); // This is the speaker
-    PMU.enableALDO4();
-    PMU.enableBLDO1();
-    PMU.enableBLDO2();
-    PMU.enableCPUSLDO();
-    // PMU.enableDLDO1(); // This is the vibration motor
-    // PMU.enableDLDO2();
-
-
-    ESP_LOGCONFIG(TAG, "DC1  : %s   Voltage:%u mV",  PMU.isEnableDC1()  ? "+" : "-", PMU.getDC1Voltage());
-    ESP_LOGCONFIG(TAG, "DC2  : %s   Voltage:%u mV",  PMU.isEnableDC2()  ? "+" : "-", PMU.getDC2Voltage());
-    ESP_LOGCONFIG(TAG, "DC3  : %s   Voltage:%u mV",  PMU.isEnableDC3()  ? "+" : "-", PMU.getDC3Voltage());
-    ESP_LOGCONFIG(TAG, "DC4  : %s   Voltage:%u mV",  PMU.isEnableDC4()  ? "+" : "-", PMU.getDC4Voltage());
-    ESP_LOGCONFIG(TAG, "DC5  : %s   Voltage:%u mV",  PMU.isEnableDC5()  ? "+" : "-", PMU.getDC5Voltage());
-    ESP_LOGCONFIG(TAG, "ALDO1: %s   Voltage:%u mV",  PMU.isEnableALDO1()  ? "+" : "-", PMU.getALDO1Voltage());
-    ESP_LOGCONFIG(TAG, "ALDO2: %s   Voltage:%u mV",  PMU.isEnableALDO2()  ? "+" : "-", PMU.getALDO2Voltage());
-    ESP_LOGCONFIG(TAG, "ALDO3: %s   Voltage:%u mV",  PMU.isEnableALDO3()  ? "+" : "-", PMU.getALDO3Voltage());
-    ESP_LOGCONFIG(TAG, "ALDO4: %s   Voltage:%u mV",  PMU.isEnableALDO4()  ? "+" : "-", PMU.getALDO4Voltage());
-    ESP_LOGCONFIG(TAG, "BLDO1: %s   Voltage:%u mV",  PMU.isEnableBLDO1()  ? "+" : "-", PMU.getBLDO1Voltage());
-    ESP_LOGCONFIG(TAG, "BLDO2: %s   Voltage:%u mV",  PMU.isEnableBLDO2()  ? "+" : "-", PMU.getBLDO2Voltage());
-    ESP_LOGCONFIG(TAG, "CPUSLDO: %s Voltage:%u mV",  PMU.isEnableCPUSLDO() ? "+" : "-", PMU.getCPUSLDOVoltage());
-    ESP_LOGCONFIG(TAG, "DLDO1: %s   Voltage:%u mV",  PMU.isEnableDLDO1()  ? "+" : "-", PMU.getDLDO1Voltage());
-    ESP_LOGCONFIG(TAG, "DLDO2: %s   Voltage:%u mV",  PMU.isEnableDLDO2()  ? "+" : "-", PMU.getDLDO2Voltage());
-
-    // Set the time of pressing the button to turn off
-    PMU.setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
-    uint8_t opt = PMU.getPowerKeyPressOffTime();
-    switch (opt) {
-    case XPOWERS_POWEROFF_4S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOffTime: 4 Second");
-        break;
-    case XPOWERS_POWEROFF_6S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOffTime: 6 Second");
-        break;
-    case XPOWERS_POWEROFF_8S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOffTime: 8 Second");
-        break;
-    case XPOWERS_POWEROFF_10S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOffTime: 10 Second");
-        break;
-    default:
-        break;
+// DC-DC control methods
+void AXP2101Component::setDCVoltage(uint8_t channel, uint16_t voltage_mv) {
+    uint8_t reg = AXP2101_DC_VOL0 + channel;
+    uint8_t value = 0;
+    
+    // DC1: 1500-3400mV, 100mV/step
+    // DC2/3/4: Different ranges - simplified implementation
+    if (channel == 0) { // DC1
+        if (voltage_mv >= 1500 && voltage_mv <= 3400) {
+            value = (voltage_mv - 1500) / 100;
+        }
+    } else if (channel <= 3) { // DC2-4
+        if (voltage_mv >= 500 && voltage_mv <= 1200) {
+            value = (voltage_mv - 500) / 10;
+        } else if (voltage_mv >= 1220 && voltage_mv <= 1540) {
+            value = 71 + (voltage_mv - 1220) / 20;
+        }
+    } else if (channel == 4) { // DC5
+        if (voltage_mv >= 1400 && voltage_mv <= 3700) {
+            value = (voltage_mv - 1400) / 100;
+        } else if (voltage_mv == 1200) {
+            value = 0;
+        }
     }
-    // Set the button power-on press time
-    PMU.setPowerKeyPressOnTime(XPOWERS_POWERON_128MS);
-    opt = PMU.getPowerKeyPressOnTime();
-    switch (opt) {
-    case XPOWERS_POWERON_128MS:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOnTime: 128 Ms");
-        break;
-    case XPOWERS_POWERON_512MS:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOnTime: 512 Ms");
-        break;
-    case XPOWERS_POWERON_1S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOnTime: 1 Second");
-        break;
-    case XPOWERS_POWERON_2S:
-        ESP_LOGCONFIG(TAG, "PowerKeyPressOnTime: 2 Second");
-        break;
-    default:
-        break;
+    
+    writeRegister(reg, value);
+}
+
+void AXP2101Component::enableDC(uint8_t channel, bool enable) {
+    uint8_t mask = 1 << channel;
+    if (enable) {
+        setBits(AXP2101_DC_ONOFF_DVM_CTRL, mask);
+    } else {
+        clearBits(AXP2101_DC_ONOFF_DVM_CTRL, mask);
     }
+}
 
-    bool en;
+// LDO control methods
+void AXP2101Component::setALDOVoltage(uint8_t channel, uint16_t voltage_mv) {
+    if (channel > 3) return;
+    uint8_t reg = AXP2101_ALDO_VOL0 + channel;
+    
+    // ALDO: 500-3500mV, 100mV/step
+    if (voltage_mv >= 500 && voltage_mv <= 3500) {
+        uint8_t value = (voltage_mv - 500) / 100;
+        writeRegister(reg, value);
+    }
+}
 
-    // DCDC 120%(130%) high voltage turn off PMIC function
-    en = PMU.getDCHighVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDCHighVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
-    // DCDC1 85% low voltage turn off PMIC function
-    en = PMU.getDC1LowVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDC1LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
-    // DCDC2 85% low voltage turn off PMIC function
-    en = PMU.getDC2LowVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDC2LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
-    // DCDC3 85% low voltage turn off PMIC function
-    en = PMU.getDC3LowVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDC3LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
-    // DCDC4 85% low voltage turn off PMIC function
-    en = PMU.getDC4LowVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDC4LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
-    // DCDC5 85% low voltage turn off PMIC function
-    en = PMU.getDC5LowVoltagePowerDownEn();
-    ESP_LOGCONFIG(TAG, "getDC5LowVoltagePowerDownEn: %s", en ? "ENABLE" : "DISABLE");
+void AXP2101Component::setBLDOVoltage(uint8_t channel, uint16_t voltage_mv) {
+    if (channel > 1) return;
+    uint8_t reg = AXP2101_BLDO_VOL0 + channel;
+    
+    // BLDO: 500-3500mV, 100mV/step
+    if (voltage_mv >= 500 && voltage_mv <= 3500) {
+        uint8_t value = (voltage_mv - 500) / 100;
+        writeRegister(reg, value);
+    }
+}
 
-    // PMU.setDCHighVoltagePowerDowm(true);
-    // PMU.setDC1LowVoltagePowerDowm(true);
-    // PMU.setDC2LowVoltagePowerDowm(true);
-    // PMU.setDC3LowVoltagePowerDowm(true);
-    // PMU.setDC4LowVoltagePowerDowm(true);
-    // PMU.setDC5LowVoltagePowerDowm(true);
+void AXP2101Component::enableALDO(uint8_t channel, bool enable) {
+    if (channel > 3) return;
+    uint8_t mask = 1 << channel;
+    if (enable) {
+        setBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+    } else {
+        clearBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+    }
+}
 
-    // It is necessary to disable the detection function of the TS pin on the board
-    // without the battery temperature detection function, otherwise it will cause abnormal charging
-    PMU.disableTSPinMeasure();
+void AXP2101Component::enableBLDO(uint8_t channel, bool enable) {
+    if (channel > 1) return;
+    uint8_t mask = 1 << (channel + 4);  // BLDO1/2 are bits 4-5
+    if (enable) {
+        setBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+    } else {
+        clearBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+    }
+}
 
-    PMU.enableTemperatureMeasure();
+// Battery and charging methods
+uint16_t AXP2101Component::getBatteryVoltage() {
+    uint8_t data[2];
+    if (!readRegisterMulti(AXP2101_VBAT_H, data, 2)) {
+        return 0;
+    }
+    // 14-bit value, LSB = 1.1mV
+    uint16_t raw = ((uint16_t)data[0] << 6) | (data[1] & 0x3F);
+    return (uint16_t)((float)raw * 1.1f);
+}
 
-    // Enable internal ADC detection
-    PMU.enableBattDetection();
-    PMU.enableVbusVoltageMeasure();
-    PMU.enableBattVoltageMeasure();
-    PMU.enableSystemVoltageMeasure();
+uint8_t AXP2101Component::getBatteryPercent() {
+    uint8_t percent = 0;
+    if (!readRegister(AXP2101_BAT_PERCENT, &percent)) {
+        return 0;
+    }
+    return (percent & 0x7F);  // Lower 7 bits
+}
 
+bool AXP2101Component::isCharging() {
+    uint8_t status = 0;
+    if (!readRegister(AXP2101_COMM_STAT0, &status)) {
+        return false;
+    }
+    return (status & 0x40) != 0;  // Bit 6: charging status
+}
 
-    /*
-      The default setting is CHGLED is automatically controlled by the PMU.
-    - XPOWERS_CHG_LED_OFF,
-    - XPOWERS_CHG_LED_BLINK_1HZ,
-    - XPOWERS_CHG_LED_BLINK_4HZ,
-    - XPOWERS_CHG_LED_ON,
-    - XPOWERS_CHG_LED_CTRL_CHG,
-    * */
-    PMU.setChargingLedMode(XPOWERS_CHG_LED_OFF);
+bool AXP2101Component::isBatteryConnected() {
+    uint8_t status = 0;
+    if (!readRegister(AXP2101_COMM_STAT0, &status)) {
+        return false;
+    }
+    return (status & 0x08) != 0;  // Bit 3: battery present
+}
 
+bool AXP2101Component::isVBUSGood() {
+    uint8_t status = 0;
+    if (!readRegister(AXP2101_COMM_STAT0, &status)) {
+        return false;
+    }
+    return (status & 0x20) != 0;  // Bit 5: VBUS good
+}
 
-    // Force add pull-up
-    //pinMode(pmu_irq_pin, INPUT_PULLUP);
-    //attachInterrupt(pmu_irq_pin, setFlag, FALLING);
+void AXP2101Component::initPowerOutputs() {
+    ESP_LOGI(TAG, "Initializing power outputs...");
+    
+    // IMPORTANT: Don't change voltages for critical system rails that are already on
+    // Only configure rails that are safe to modify
+    
+    // Read current power states to avoid disrupting critical rails
+    uint8_t dc_state, ldo_state0, ldo_state1;
+    readRegister(AXP2101_DC_ONOFF_DVM_CTRL, &dc_state);
+    readRegister(AXP2101_LDO_ONOFF_CTRL0, &ldo_state0);
+    readRegister(AXP2101_LDO_ONOFF_CTRL1, &ldo_state1);
+    
+    ESP_LOGD(TAG, "Current power states - DC: 0x%02X, LDO0: 0x%02X, LDO1: 0x%02X", dc_state, ldo_state0, ldo_state1);
+    
+    // Only set BLDO1 voltage for backlight control (safe to modify)
+    ESP_LOGD(TAG, "Setting BLDO1 for backlight...");
+    setBLDOVoltage(0, 3300);  // BLDO1: Backlight
+    
+    // Ensure BLDO1 is enabled for backlight
+    if (!(ldo_state0 & (1 << 4))) {
+        ESP_LOGD(TAG, "Enabling BLDO1...");
+        enableBLDO(0, true);
+    }
+    
+    ESP_LOGI(TAG, "Power outputs initialized (conservative mode)");
+}
 
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_NEGEDGE; 
-    io_conf.mode = GPIO_MODE_INPUT;       
-    io_conf.pin_bit_mask = (1ULL << GPIO_NUM_21); 
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;     
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE; 
-    gpio_config(&io_conf);                       
+void AXP2101Component::initCharger() {
+    ESP_LOGI(TAG, "Initializing charger...");
+    
+    // Read current ADC state
+    uint8_t adc_state;
+    readRegister(AXP2101_ADC_ENABLE, &adc_state);
+    ESP_LOGD(TAG, "Current ADC state: 0x%02X", adc_state);
+    
+    // Disable TS pin detection (no battery temperature sensor)
+    clearBits(AXP2101_ADC_ENABLE, 0x01);
+    
+    // Enable ADC for battery and VBUS monitoring
+    setBits(AXP2101_ADC_ENABLE, 0x82);  // Enable VBAT and VBUS ADC
+    
+    // Note: Not modifying VBUS limits, charge current, etc. as they may already be
+    // configured by the bootloader/hardware. This is safer for initial setup.
+    
+    ESP_LOGI(TAG, "Charger initialized (basic ADC only)");
+}
 
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_NUM_21, setFlag, (void*) GPIO_NUM_21);
-
-    // Disable all interrupts
-    PMU.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
+void AXP2101Component::initInterrupts() {
+    ESP_LOGI(TAG, "Initializing interrupts...");
+    
+    // Skip GPIO interrupt setup for now - can be added later if needed
+    ESP_LOGD(TAG, "Skipping GPIO IRQ pin setup (not critical for basic operation)");
+    
     // Clear all interrupt flags
-    PMU.clearIrqStatus();
-    // Enable the required interrupt function
-    PMU.enableIRQ(
-        XPOWERS_AXP2101_BAT_INSERT_IRQ    | XPOWERS_AXP2101_BAT_REMOVE_IRQ      |   //BATTERY
-        XPOWERS_AXP2101_VBUS_INSERT_IRQ   | XPOWERS_AXP2101_VBUS_REMOVE_IRQ     |   //VBUS
-        XPOWERS_AXP2101_PKEY_SHORT_IRQ    | XPOWERS_AXP2101_PKEY_LONG_IRQ       |   //POWER KEY
-        XPOWERS_AXP2101_BAT_CHG_DONE_IRQ  | XPOWERS_AXP2101_BAT_CHG_START_IRQ       //CHARGE
-        // XPOWERS_AXP2101_PKEY_NEGATIVE_IRQ | XPOWERS_AXP2101_PKEY_POSITIVE_IRQ   |   //POWER KEY
-    );
+    writeRegister(AXP2101_IRQ_STATUS0, 0xFF);
+    writeRegister(AXP2101_IRQ_STATUS1, 0xFF);
+    writeRegister(AXP2101_IRQ_STATUS2, 0xFF);
+    
+    // Disable all interrupts for now (safer startup)
+    writeRegister(AXP2101_IRQ_EN0, 0x00);
+    writeRegister(AXP2101_IRQ_EN1, 0x00);
+    writeRegister(AXP2101_IRQ_EN2, 0x00);
+    
+    ESP_LOGI(TAG, "Interrupts initialized (polling mode)");
+}
 
-    // Set the precharge charging current
-    PMU.setPrechargeCurr(XPOWERS_AXP2101_PRECHARGE_50MA);
-    // Set constant current charge current limit
-    PMU.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_200MA);
-    // Set stop charging termination current
-    PMU.setChargerTerminationCurr(XPOWERS_AXP2101_CHG_ITERM_25MA);
-
-    // Set charge cut-off voltage
-    PMU.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V1);
-
-    // Set the watchdog trigger event type
-    PMU.setWatchdogConfig(XPOWERS_AXP2101_WDT_IRQ_TO_PIN);
-    // Set watchdog timeout
-    PMU.setWatchdogTimeout(XPOWERS_AXP2101_WDT_TIMEOUT_4S);
-    // Enable watchdog to trigger interrupt event
-    PMU.enableWatchdog();
-
-    // PMU.disableWatchdog();
-
-    // Enable Button Battery charge
-    PMU.enableButtonBatteryCharge();
-
-    // Set Button Battery charge voltage
-    PMU.setButtonBatteryChargeVoltage(3300);
+void AXP2101Component::setup() {
+    ESP_LOGCONFIG(TAG, "Setting up AXP2101...");
+    ESP_LOGCONFIG(TAG, "I2C Address: 0x%02X", this->address_);
+    
+    // Small delay to allow I2C bus to stabilize
+    delay_microseconds_safe(100000);  // 100ms
+    
+    // Test basic I2C communication by trying to read multiple registers
+    ESP_LOGD(TAG, "Testing I2C communication...");
+    uint8_t test_val;
+    
+    // Try reading chip ID first (register 0x03)
+    bool comm_ok = readRegister(AXP2101_CHIP_ID, &test_val);
+    if (comm_ok) {
+        ESP_LOGD(TAG, "Successfully read Chip ID register: 0x%02X", test_val);
+    } else {
+        ESP_LOGW(TAG, "Failed to read Chip ID register");
+    }
+    
+    // Try reading status register (register 0x01)
+    if (readRegister(AXP2101_COMM_STAT0, &test_val)) {
+        ESP_LOGD(TAG, "Successfully read Status register: 0x%02X", test_val);
+        comm_ok = true;
+    } else {
+        ESP_LOGW(TAG, "Failed to read Status register");
+    }
+    
+    // Try reading config register (register 0x00)
+    if (readRegister(AXP2101_COMM_CFG, &test_val)) {
+        ESP_LOGD(TAG, "Successfully read Config register: 0x%02X", test_val);
+        comm_ok = true;
+    } else {
+        ESP_LOGW(TAG, "Failed to read Config register");
+    }
+    
+    if (!comm_ok) {
+        ESP_LOGE(TAG, "Failed to communicate with AXP2101!");
+        ESP_LOGE(TAG, "Please check:");
+        ESP_LOGE(TAG, "  - I2C bus is correctly initialized (SDA: GPIO21, SCL: GPIO22)");
+        ESP_LOGE(TAG, "  - I2C address is correct (0x34 for AXP2101)");
+        ESP_LOGE(TAG, "  - Power is supplied to the AXP2101");
+        ESP_LOGE(TAG, "  - Pull-up resistors are present on I2C lines");
+        this->mark_failed();
+        return;
+    }
+    
+    // Read and verify chip ID
+    uint8_t chip_id = getChipID();
+    ESP_LOGCONFIG(TAG, "Chip ID: 0x%02X", chip_id);
+    
+    // AXP2101 chip ID should be 0x47, but some variants may differ
+    // 0x4A is a valid AXP2101 variant chip ID
+    if (chip_id == 0x00 || chip_id == 0xFF) {
+        ESP_LOGE(TAG, "Invalid chip ID: 0x%02X - possible I2C communication error", chip_id);
+        this->mark_failed();
+        return;
+    } else if (chip_id == 0x47 || chip_id == 0x4A) {
+        ESP_LOGI(TAG, "Valid AXP2101 chip ID detected: 0x%02X", chip_id);
+    } else {
+        ESP_LOGW(TAG, "Unexpected chip ID! Expected 0x47 or 0x4A, got 0x%02X - continuing anyway", chip_id);
+    }
+    
+    // Initialize subsystems
+    ESP_LOGI(TAG, "Initializing AXP2101 subsystems...");
+    initPowerOutputs();
+    initCharger();
+    initInterrupts();
+    
+    ESP_LOGCONFIG(TAG, "AXP2101 setup complete");
 }
 
 void AXP2101Component::dump_config() {
-  ESP_LOGCONFIG(TAG, "AXP2101:");
-  LOG_I2C_DEVICE(this);
-  LOG_SENSOR("  ", "Battery Voltage", this->batteryvoltage_sensor_);
-  LOG_SENSOR("  ", "Battery Level", this->batterylevel_sensor_);
-  LOG_BINARY_SENSOR("  ", "Battery Charging", this->batterycharging_bsensor_);
+    ESP_LOGCONFIG(TAG, "AXP2101:");
+    LOG_I2C_DEVICE(this);
+    
+    if (this->is_failed()) {
+        ESP_LOGE(TAG, "Communication with AXP2101 failed!");
+        return;
+    }
+    
+    ESP_LOGCONFIG(TAG, "  Chip ID: 0x%02X", getChipID());
+    LOG_SENSOR("  ", "Battery Voltage", this->batteryvoltage_sensor_);
+    LOG_SENSOR("  ", "Battery Level", this->batterylevel_sensor_);
+    LOG_BINARY_SENSOR("  ", "Battery Charging", this->batterycharging_bsensor_);
+    ESP_LOGCONFIG(TAG, "  Brightness: %.0f%%", this->brightness_ * 100.0f);
 }
 
-float AXP2101Component::get_setup_priority() const { return setup_priority::DATA; }
+float AXP2101Component::get_setup_priority() const { 
+    return setup_priority::DATA; 
+}
 
 void AXP2101Component::update() {
-
+    // Check for interrupts
+    if (pmu_flag) {
+        pmu_flag = false;
+        uint8_t irq[3];
+        readRegister(AXP2101_IRQ_STATUS0, &irq[0]);
+        readRegister(AXP2101_IRQ_STATUS1, &irq[1]);
+        readRegister(AXP2101_IRQ_STATUS2, &irq[2]);
+        
+        ESP_LOGD(TAG, "IRQ: %02X %02X %02X", irq[0], irq[1], irq[2]);
+        
+        // Clear interrupt flags
+        writeRegister(AXP2101_IRQ_STATUS0, irq[0]);
+        writeRegister(AXP2101_IRQ_STATUS1, irq[1]);
+        writeRegister(AXP2101_IRQ_STATUS2, irq[2]);
+    }
+    
+    // Update battery voltage
+    if (this->batteryvoltage_sensor_ != nullptr) {
+        uint16_t vbat_mv = getBatteryVoltage();
+        float vbat_v = vbat_mv / 1000.0f;
+        ESP_LOGD(TAG, "Battery Voltage: %.3fV (%dmV)", vbat_v, vbat_mv);
+        this->batteryvoltage_sensor_->publish_state(vbat_v);
+    }
+    
+    // Update battery level
     if (this->batterylevel_sensor_ != nullptr) {
-      float vbat = PMU.getBattVoltage();
-      ESP_LOGD(TAG, "Got Battery Voltage=%f", vbat);
-      this->batteryvoltage_sensor_->publish_state(vbat / 1000.);
-
-      // The battery percentage may be inaccurate at first use, the PMU will automatically
-      // learn the battery curve and will automatically calibrate the battery percentage
-      // after a charge and discharge cycle
-      float batterylevel;
-      if (PMU.isBatteryConnect()) {
-        batterylevel = PMU.getBatteryPercent();
-      } else {
-        batterylevel = 100.0 * ((vbat - 3.0) / (4.1 - 3.0));
-      }
-
-      ESP_LOGD(TAG, "Got Battery Level=%f", batterylevel);
-      if (batterylevel > 100.) {
-        batterylevel = 100;
-      }
-      this->batterylevel_sensor_->publish_state(batterylevel);
+        float battery_level;
+        
+        if (isBatteryConnected()) {
+            battery_level = getBatteryPercent();
+        } else {
+            // Fallback calculation if battery gauge not available
+            uint16_t vbat_mv = getBatteryVoltage();
+            float vbat_v = vbat_mv / 1000.0f;
+            battery_level = (vbat_v - 3.0f) / (4.1f - 3.0f) * 100.0f;
+        }
+        
+        if (battery_level > 100.0f) battery_level = 100.0f;
+        if (battery_level < 0.0f) battery_level = 0.0f;
+        
+        ESP_LOGD(TAG, "Battery Level: %.0f%%", battery_level);
+        this->batterylevel_sensor_->publish_state(battery_level);
     }
-
+    
+    // Update charging status
     if (this->batterycharging_bsensor_ != nullptr) {
-      bool vcharging = PMU.isCharging();
-
-      ESP_LOGD(TAG, "Got Battery Charging=%s", vcharging ? "true" : "false");
-      this->batterycharging_bsensor_->publish_state(vcharging);
+        bool charging = isCharging();
+        ESP_LOGD(TAG, "Battery Charging: %s", charging ? "Yes" : "No");
+        this->batterycharging_bsensor_->publish_state(charging);
     }
-
+    
+    // Update brightness
     UpdateBrightness();
 }
 
-void AXP2101Component::Write1Byte( uint8_t Addr ,  uint8_t Data )
-{
-    this->write_byte(Addr, Data);
-}
-
-uint8_t AXP2101Component::Read8bit( uint8_t Addr )
-{
-    uint8_t data;
-    this->read_byte(Addr, &data);
-    return data;
-}
-
-uint16_t AXP2101Component::Read12Bit( uint8_t Addr)
-{
-    uint16_t Data = 0;
-    uint8_t buf[2];
-    ReadBuff(Addr,2,buf);
-    Data = ((buf[0] << 4) + buf[1]); //
-    return Data;
-}
-
-uint16_t AXP2101Component::Read13Bit( uint8_t Addr)
-{
-    uint16_t Data = 0;
-    uint8_t buf[2];
-    ReadBuff(Addr,2,buf);
-    Data = ((buf[0] << 5) + buf[1]); //
-    return Data;
-}
-
-uint16_t AXP2101Component::Read16bit( uint8_t Addr )
-{
-    uint32_t ReData = 0;
-    uint8_t Buff[2];
-    this->read_bytes(Addr, Buff, sizeof(Buff));
-    for( int i = 0 ; i < sizeof(Buff) ; i++ )
-    {
-        ReData <<= 8;
-        ReData |= Buff[i];
-    }
-    return ReData;
-}
-
-uint32_t AXP2101Component::Read24bit( uint8_t Addr )
-{
-    uint32_t ReData = 0;
-    uint8_t Buff[3];
-    this->read_bytes(Addr, Buff, sizeof(Buff));
-    for( int i = 0 ; i < sizeof(Buff) ; i++ )
-    {
-        ReData <<= 8;
-        ReData |= Buff[i];
-    }
-    return ReData;
-}
-
-uint32_t AXP2101Component::Read32bit( uint8_t Addr )
-{
-    uint32_t ReData = 0;
-    uint8_t Buff[4];
-    this->read_bytes(Addr, Buff, sizeof(Buff));
-    for( int i = 0 ; i < sizeof(Buff) ; i++ )
-    {
-        ReData <<= 8;
-        ReData |= Buff[i];
-    }
-    return ReData;
-}
-
-void AXP2101Component::ReadBuff( uint8_t Addr , uint8_t Size , uint8_t *Buff )
-{
-    this->read_bytes(Addr, Buff, Size);
-}
-
-void AXP2101Component::UpdateBrightness()
-{
+void AXP2101Component::UpdateBrightness() {
     if (brightness_ == curr_brightness_) return;
-
-    float cur_volt = static_cast<float>(PMU.getBLDO1Voltage());
-    float new_rounded_mv = 500.0;
-
-    if (brightness_ != 0.0) 
-    {
-        const float c_min = 2500;
-        const float c_max = 3300;
-        const float multiple = 100;
-
-        auto cur_pct = static_cast<float>(((cur_volt - c_min)/(c_max - c_min) * 100) * .01);
-        auto new_mv = static_cast<float>(((c_max - c_min) * brightness_) + c_min);
-        new_rounded_mv = static_cast<float>(std::ceil(new_mv / multiple) * multiple);
-        ESP_LOGD(TAG, "Brightness:%f (%f), Curr: %f (%f)", brightness_, new_rounded_mv, cur_volt, cur_pct);
+    
+    uint16_t new_voltage_mv = 500;  // Minimum voltage (off)
+    
+    if (brightness_ > 0.0f) {
+        // Map brightness 0.0-1.0 to voltage 2500-3300mV
+        const float min_voltage = 2500.0f;
+        const float max_voltage = 3300.0f;
+        const float voltage_step = 100.0f;
+        
+        float target_mv = min_voltage + (brightness_ * (max_voltage - min_voltage));
+        new_voltage_mv = (uint16_t)(std::ceil(target_mv / voltage_step) * voltage_step);
+        
+        ESP_LOGD(TAG, "Setting backlight: %.0f%% -> %dmV", brightness_ * 100.0f, new_voltage_mv);
+    } else {
+        ESP_LOGD(TAG, "Turning backlight off");
     }
-    else
-    {
-        ESP_LOGD(TAG, "Turning Backlight off.");
-    }
-
+    
     curr_brightness_ = brightness_;
-
-    switch (this->model_) {
-        case AXP2101_M5CORE2:
-        {
-          ESP_LOGD(TAG, "Setting Brightness mv to %f (%f)", new_rounded_mv, brightness_);
-          PMU.setBLDO1Voltage(new_rounded_mv);
-          break;
-        }
-    }
+    
+    // BLDO1 controls backlight on M5Core2
+    setBLDOVoltage(0, new_voltage_mv);
 }
 
-bool AXP2101Component::GetBatState()
-{
-    if( Read8bit(0x01) | 0x20 )
-        return true;
-    else
-        return false;
+void AXP2101Component::SetSleep() {
+    // Prepare for sleep
+    writeRegister(AXP2101_SLEEP_CFG, 0x08);
 }
 
-uint8_t AXP2101Component::GetBatData()
-{
-    return Read8bit(0x75);
-}
-//---------coulombcounter_from_here---------
-//enable: void EnableCoulombcounter(void);
-//disable: void DisableCOulombcounter(void);
-//stop: void StopCoulombcounter(void);
-//clear: void ClearCoulombcounter(void);
-//get charge data: uint32_t GetCoulombchargeData(void);
-//get discharge data: uint32_t GetCoulombdischargeData(void);
-//get coulomb val affter calculation: float GetCoulombData(void);
-//------------------------------------------
-void  AXP2101Component::EnableCoulombcounter(void)
-{
-    Write1Byte( 0xB8 , 0x80 );
-}
-
-void  AXP2101Component::DisableCoulombcounter(void)
-{
-    Write1Byte( 0xB8 , 0x00 );
-}
-
-void  AXP2101Component::StopCoulombcounter(void)
-{
-    Write1Byte( 0xB8 , 0xC0 );
-}
-
-void  AXP2101Component::ClearCoulombcounter(void)
-{
-    Write1Byte( 0xB8 , 0xA0 );
-}
-
-uint32_t AXP2101Component::GetCoulombchargeData(void)
-{
-    return Read32bit(0xB0);
-}
-
-uint32_t AXP2101Component::GetCoulombdischargeData(void)
-{
-    return Read32bit(0xB4);
-}
-
-float AXP2101Component::GetCoulombData(void)
-{
-
-  uint32_t coin = 0;
-  uint32_t coout = 0;
-
-  coin = GetCoulombchargeData();
-  coout = GetCoulombdischargeData();
-
-  //c = 65536 * current_LSB * (coin - coout) / 3600 / ADC rate
-  //Adc rate can be read from 84H ,change this variable if you change the ADC reate
-  float ccc = 65536 * 0.5 * (coin - coout) / 3600.0 / 25.0;
-  return ccc;
-
-}
-//----------coulomb_end_at_here----------
-
-uint16_t AXP2101Component::GetVbatData(void){
-
-    uint16_t vbat = 0;
-    uint8_t buf[2];
-    ReadBuff(0x78,2,buf);
-    vbat = ((buf[0] << 4) + buf[1]); // V
-    return vbat;
-}
-
-uint16_t AXP2101Component::GetVinData(void)
-{
-    uint16_t vin = 0;
-    uint8_t buf[2];
-    ReadBuff(0x56,2,buf);
-    vin = ((buf[0] << 4) + buf[1]); // V
-    return vin;
-}
-
-uint16_t AXP2101Component::GetIinData(void)
-{
-    uint16_t iin = 0;
-    uint8_t buf[2];
-    ReadBuff(0x58,2,buf);
-    iin = ((buf[0] << 4) + buf[1]);
-    return iin;
-}
-
-uint16_t AXP2101Component::GetVusbinData(void)
-{
-    uint16_t vin = 0;
-    uint8_t buf[2];
-    ReadBuff(0x5a,2,buf);
-    vin = ((buf[0] << 4) + buf[1]); // V
-    return vin;
-}
-
-uint16_t AXP2101Component::GetIusbinData(void)
-{
-    uint16_t iin = 0;
-    uint8_t buf[2];
-    ReadBuff(0x5C,2,buf);
-    iin = ((buf[0] << 4) + buf[1]);
-    return iin;
-}
-
-uint16_t AXP2101Component::GetIchargeData(void)
-{
-    uint16_t icharge = 0;
-    uint8_t buf[2];
-    ReadBuff(0x7A,2,buf);
-    icharge = ( buf[0] << 5 ) + buf[1] ;
-    return icharge;
-}
-
-uint16_t AXP2101Component::GetIdischargeData(void)
-{
-    uint16_t idischarge = 0;
-    uint8_t buf[2];
-    ReadBuff(0x7C,2,buf);
-    idischarge = ( buf[0] << 5 ) + buf[1] ;
-    return idischarge;
-}
-
-uint16_t AXP2101Component::GetTempData(void)
-{
-    uint16_t temp = 0;
-    uint8_t buf[2];
-    ReadBuff(0x5e,2,buf);
-    temp = ((buf[0] << 4) + buf[1]);
-    return temp;
-}
-
-uint32_t AXP2101Component::GetPowerbatData(void)
-{
-    uint32_t power = 0;
-    uint8_t buf[3];
-    ReadBuff(0x70,2,buf);
-    power = (buf[0] << 16) + (buf[1] << 8) + buf[2];
-    return power;
-}
-
-uint16_t AXP2101Component::GetVapsData(void)
-{
-    uint16_t vaps = 0;
-    uint8_t buf[2];
-    ReadBuff(0x7e,2,buf);
-    vaps = ((buf[0] << 4) + buf[1]);
-    return vaps;
-}
-
-void AXP2101Component::SetSleep(void)
-{
-    Write1Byte(0x31 , Read8bit(0x31) | ( 1 << 3)); // Power off voltag 3.0v
-    Write1Byte(0x90 , Read8bit(0x90) | 0x07); // GPIO1 floating
-    Write1Byte(0x82, 0x00); // Disable ADCs
-    Write1Byte(0x12, Read8bit(0x12) & 0xA1); // Disable all outputs but DCDC1
-}
-
-// -- sleep
-void AXP2101Component::DeepSleep(uint64_t time_in_us)
-{
+void AXP2101Component::DeepSleep(uint64_t time_in_us) {
     SetSleep();
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)37, 0 /* LOW */);
-    if (time_in_us > 0)
-    {
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_37, 0);
+    
+    if (time_in_us > 0) {
         esp_sleep_enable_timer_wakeup(time_in_us);
-    }
-    else
-    {
+    } else {
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
     }
-    (time_in_us == 0) ? esp_deep_sleep_start() : esp_deep_sleep(time_in_us);
+    
+    esp_deep_sleep_start();
 }
 
-void AXP2101Component::LightSleep(uint64_t time_in_us)
-{
-    if (time_in_us > 0)
-    {
+void AXP2101Component::LightSleep(uint64_t time_in_us) {
+    if (time_in_us > 0) {
         esp_sleep_enable_timer_wakeup(time_in_us);
-    }
-    else
-    {
+    } else {
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
     }
+    
     esp_light_sleep_start();
 }
 
-// 0 not press, 0x01 long press, 0x02 press
-uint8_t AXP2101Component::GetBtnPress()
-{
-    uint8_t state = Read8bit(0x46);
-    if(state)
-    {
-        Write1Byte( 0x46 , 0x03 );
-    }
-    return state;
-}
-
-uint8_t AXP2101Component::GetWarningLevel(void)
-{
-    return Read8bit(0x47) & 0x01;
-}
-
-float AXP2101Component::GetBatCurrent()
-{
-    float ADCLSB = 0.5;
-    uint16_t CurrentIn = Read13Bit( 0x7A );
-    uint16_t CurrentOut = Read13Bit( 0x7C );
-    return ( CurrentIn - CurrentOut ) * ADCLSB;
-}
-
-float AXP2101Component::GetVinVoltage()
-{
-    float ADCLSB = 1.7 / 1000.0;
-    uint16_t ReData = Read12Bit( 0x56 );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetVinCurrent()
-{
-    float ADCLSB = 0.625;
-    uint16_t ReData = Read12Bit( 0x58 );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetVBusVoltage()
-{
-    float ADCLSB = 1.7 / 1000.0;
-    uint16_t ReData = Read12Bit( 0x5A );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetVBusCurrent()
-{
-    float ADCLSB = 0.375;
-    uint16_t ReData = Read12Bit( 0x5C );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetTempInAXP2101()
-{
-    float ADCLSB = 0.1;
-    const float OFFSET_DEG_C = -144.7;
-    uint16_t ReData = Read12Bit( 0x5E );
-    return OFFSET_DEG_C + ReData * ADCLSB;
-}
-
-float AXP2101Component::GetBatPower()
-{
-    float VoltageLSB = 1.1;
-    float CurrentLCS = 0.5;
-    uint32_t ReData = Read24bit( 0x70 );
-    return  VoltageLSB * CurrentLCS * ReData/ 1000.0;
-}
-
-float AXP2101Component::GetBatChargeCurrent()
-{
-    float ADCLSB = 0.5;
-    uint16_t ReData = Read13Bit( 0x7A );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetAPSVoltage()
-{
-    float ADCLSB = 1.4  / 1000.0;
-    uint16_t ReData = Read12Bit( 0x7E );
-    return ReData * ADCLSB;
-}
-
-float AXP2101Component::GetBatCoulombInput()
-{
-    uint32_t ReData = Read32bit( 0xB0 );
-    return ReData * 65536 * 0.5 / 3600 /25.0;
-}
-
-float AXP2101Component::GetBatCoulombOut()
-{
-    uint32_t ReData = Read32bit( 0xB4 );
-    return ReData * 65536 * 0.5 / 3600 /25.0;
-}
-
-void AXP2101Component::SetCoulombClear()
-{
-    Write1Byte(0xB8,0x20);
-}
-
-void AXP2101Component::SetLDO2( bool State )
-{
-    uint8_t buf = Read8bit(0x12);
-    if( State == true )
-    {
-        buf = (1<<2) | buf;
-    }
-    else
-    {
-        buf = ~(1<<2) & buf;
-    }
-    Write1Byte( 0x12 , buf );
-}
-
-void AXP2101Component::SetLDO3(bool State)
-{
-    uint8_t buf = Read8bit(0x12);
-    if( State == true )
-    {
-        buf = (1<<3) | buf;
-    }
-    else
-    {
-        buf = ~(1<<3) & buf;
-    }
-    Write1Byte( 0x12 , buf );
-}
-
-void AXP2101Component::SetChargeCurrent(uint8_t current)
-{
-    uint8_t buf = Read8bit(0x33);
-    buf = (buf & 0xf0) | (current & 0x07);
-    Write1Byte(0x33, buf);
-}
-
-void AXP2101Component::PowerOff()
-{
-    Write1Byte(0x32, Read8bit(0x32) | 0x80);
-}
-
-void AXP2101Component::SetAdcState(bool state)
-{
-    Write1Byte(0x82, state ? 0xff : 0x00);
-}
-
 std::string AXP2101Component::GetStartupReason() {
-  esp_reset_reason_t reset_reason = ::esp_reset_reason();
-  if (reset_reason == ESP_RST_DEEPSLEEP) {
-    esp_sleep_source_t wake_reason = esp_sleep_get_wakeup_cause();
-    if (wake_reason == ESP_SLEEP_WAKEUP_EXT0)
-      return "ESP_SLEEP_WAKEUP_EXT0";
-    if (wake_reason == ESP_SLEEP_WAKEUP_EXT0)
-      return "ESP_SLEEP_WAKEUP_EXT0";
-    if (wake_reason == ESP_SLEEP_WAKEUP_EXT1)
-      return "ESP_SLEEP_WAKEUP_EXT1";
-    if (wake_reason == ESP_SLEEP_WAKEUP_TIMER)
-      return "ESP_SLEEP_WAKEUP_TIMER";
-    if (wake_reason == ESP_SLEEP_WAKEUP_TOUCHPAD)
-      return "ESP_SLEEP_WAKEUP_TOUCHPAD";
-    if (wake_reason == ESP_SLEEP_WAKEUP_ULP)
-      return "ESP_SLEEP_WAKEUP_ULP";
-    if (wake_reason == ESP_SLEEP_WAKEUP_GPIO)
-      return "ESP_SLEEP_WAKEUP_GPIO";
-    if (wake_reason == ESP_SLEEP_WAKEUP_UART)
-      return "ESP_SLEEP_WAKEUP_UART";
-    return std::string{"WAKEUP_UNKNOWN_REASON"};
-  }
-
-  if (reset_reason == ESP_RST_UNKNOWN)
-    return "ESP_RST_UNKNOWN";
-  if (reset_reason == ESP_RST_POWERON)
-    return "ESP_RST_POWERON";
-  if (reset_reason == ESP_RST_SW)
-    return "ESP_RST_SW";
-  if (reset_reason == ESP_RST_PANIC)
-    return "ESP_RST_PANIC";
-  if (reset_reason == ESP_RST_INT_WDT)
-    return "ESP_RST_INT_WDT";
-  if (reset_reason == ESP_RST_TASK_WDT)
-    return "ESP_RST_TASK_WDT";
-  if (reset_reason == ESP_RST_WDT)
-    return "ESP_RST_WDT";
-  if (reset_reason == ESP_RST_BROWNOUT)
-    return "ESP_RST_BROWNOUT";
-  if (reset_reason == ESP_RST_SDIO)
-    return "ESP_RST_SDIO";
-  return std::string{"RESET_UNKNOWN_REASON"};
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+    
+    if (reset_reason == ESP_RST_DEEPSLEEP) {
+        esp_sleep_source_t wake_reason = esp_sleep_get_wakeup_cause();
+        switch (wake_reason) {
+            case ESP_SLEEP_WAKEUP_EXT0: return "ESP_SLEEP_WAKEUP_EXT0";
+            case ESP_SLEEP_WAKEUP_EXT1: return "ESP_SLEEP_WAKEUP_EXT1";
+            case ESP_SLEEP_WAKEUP_TIMER: return "ESP_SLEEP_WAKEUP_TIMER";
+            case ESP_SLEEP_WAKEUP_TOUCHPAD: return "ESP_SLEEP_WAKEUP_TOUCHPAD";
+            case ESP_SLEEP_WAKEUP_ULP: return "ESP_SLEEP_WAKEUP_ULP";
+            case ESP_SLEEP_WAKEUP_GPIO: return "ESP_SLEEP_WAKEUP_GPIO";
+            case ESP_SLEEP_WAKEUP_UART: return "ESP_SLEEP_WAKEUP_UART";
+            default: return "WAKEUP_UNKNOWN_REASON";
+        }
+    }
+    
+    switch (reset_reason) {
+        case ESP_RST_UNKNOWN: return "ESP_RST_UNKNOWN";
+        case ESP_RST_POWERON: return "ESP_RST_POWERON";
+        case ESP_RST_SW: return "ESP_RST_SW";
+        case ESP_RST_PANIC: return "ESP_RST_PANIC";
+        case ESP_RST_INT_WDT: return "ESP_RST_INT_WDT";
+        case ESP_RST_TASK_WDT: return "ESP_RST_TASK_WDT";
+        case ESP_RST_WDT: return "ESP_RST_WDT";
+        case ESP_RST_BROWNOUT: return "ESP_RST_BROWNOUT";
+        case ESP_RST_SDIO: return "ESP_RST_SDIO";
+        default: return "RESET_UNKNOWN_REASON";
+    }
 }
 
-}
-}
+}  // namespace axp2101
+}  // namespace esphome

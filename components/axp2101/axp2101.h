@@ -5,12 +5,80 @@
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/core/component.h"
-
-#define XPOWERS_CHIP_AXP2101
-#include "XPowersLib.h"
+#include "driver/gpio.h"
 
 namespace esphome {
 namespace axp2101 {
+
+// AXP2101 Register Definitions
+#define AXP2101_I2C_ADDR 0x34
+
+// Power control registers
+#define AXP2101_COMM_CFG 0x00
+#define AXP2101_COMM_STAT0 0x01
+#define AXP2101_COMM_STAT1 0x02
+#define AXP2101_CHIP_ID 0x03
+
+// Power output control
+#define AXP2101_DC_WORK_MODE 0x80
+#define AXP2101_DC_VOL0 0x82
+#define AXP2101_DC_VOL1 0x83
+#define AXP2101_DC_VOL2 0x84
+#define AXP2101_DC_VOL3 0x85
+#define AXP2101_DC_VOL4 0x86
+
+// LDO control
+#define AXP2101_ALDO_VOL0 0x92
+#define AXP2101_ALDO_VOL1 0x93
+#define AXP2101_ALDO_VOL2 0x94
+#define AXP2101_ALDO_VOL3 0x95
+#define AXP2101_BLDO_VOL0 0x96
+#define AXP2101_BLDO_VOL1 0x97
+#define AXP2101_CPUSLDO_VOL 0x98
+#define AXP2101_DLDO_VOL0 0x99
+#define AXP2101_DLDO_VOL1 0x9A
+
+// Power enable control
+#define AXP2101_LDO_ONOFF_CTRL0 0x90
+#define AXP2101_LDO_ONOFF_CTRL1 0x91
+#define AXP2101_DC_ONOFF_DVM_CTRL 0x81
+
+// Battery/ADC
+#define AXP2101_ADC_ENABLE 0x30
+#define AXP2101_VBAT_H 0x34
+#define AXP2101_VBAT_L 0x35
+#define AXP2101_TS_H 0x36
+#define AXP2101_TS_L 0x37
+#define AXP2101_VBUS_H 0x38
+#define AXP2101_VBUS_L 0x39
+#define AXP2101_VSYS_H 0x3A
+#define AXP2101_VSYS_L 0x3B
+
+// Charge control
+#define AXP2101_CHG_CFG 0x61
+#define AXP2101_CHG_ITERM 0x62
+#define AXP2101_CHG_IPRE_CC 0x63
+#define AXP2101_CHG_VOL 0x64
+
+// IRQ control
+#define AXP2101_IRQ_EN0 0x40
+#define AXP2101_IRQ_EN1 0x41
+#define AXP2101_IRQ_EN2 0x42
+#define AXP2101_IRQ_STATUS0 0x48
+#define AXP2101_IRQ_STATUS1 0x49
+#define AXP2101_IRQ_STATUS2 0x4A
+
+// Battery gauge
+#define AXP2101_BAT_PERCENT 0xA4
+
+// Misc
+#define AXP2101_VBUS_VOL_SET 0x16
+#define AXP2101_VBUS_CUR_SET 0x15
+#define AXP2101_VSYS_MIN 0x17
+#define AXP2101_POK_SET 0x23
+#define AXP2101_SLEEP_CFG 0x27
+#define AXP2101_WAKEUP_CFG 0x28
+#define AXP2101_WDT_CTRL 0x29
 
 enum AXP2101Model {
   AXP2101_M5CORE2,
@@ -40,7 +108,6 @@ public:
   void set_model(AXP2101Model model) { this->model_ = model; }
 
   // ========== INTERNAL METHODS ==========
-  // (In most use cases you won't need these)
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override;
@@ -50,84 +117,59 @@ private:
     static std::string GetStartupReason();
 
 protected:
-    sensor::Sensor *batteryvoltage_sensor_;
-    sensor::Sensor *batterylevel_sensor_;
-    binary_sensor::BinarySensor *batterycharging_bsensor_;
+    sensor::Sensor *batteryvoltage_sensor_{nullptr};
+    sensor::Sensor *batterylevel_sensor_{nullptr};
+    binary_sensor::BinarySensor *batterycharging_bsensor_{nullptr};
 
     float brightness_{.50f};
     float curr_brightness_{-1.0f};
     AXP2101Model model_;
+    gpio_num_t irq_pin_{GPIO_NUM_21};
 
     /* 
      * M5Stack Core2 Values
-     * LDO2: ILI9342C PWR (Display)
-     * LD03: Vibration Motor
-     * 
-     * M5Stack Core2 1.1 Values
-     * BLD01: Backlight
-     * ALD04: ILI9342C PWR (Display)
-     * LD03: Vibration Motor
+     * DC1: Internal 3.3V
+     * DC2: Internal 1.0V
+     * DC3: Display power (3.3V)
+     * DC4: Internal 1.0V
+     * DC5: External 3.3V
+     * ALDO1-4: Various LDOs
+     * BLDO1: Backlight control
+     * BLDO2: Secondary power
      */
 
+    // Helper methods for register access
+    bool writeRegister(uint8_t reg, uint8_t value);
+    bool readRegister(uint8_t reg, uint8_t *value);
+    bool readRegisterMulti(uint8_t reg, uint8_t *data, size_t len);
+    bool setBits(uint8_t reg, uint8_t mask);
+    bool clearBits(uint8_t reg, uint8_t mask);
+
+    // AXP2101 control methods
+    void initPowerOutputs();
+    void initCharger();
+    void initInterrupts();
+    uint16_t getBatteryVoltage();  // Returns mV
+    uint8_t getBatteryPercent();
+    bool isCharging();
+    bool isBatteryConnected();
+    bool isVBUSGood();
+    uint8_t getChipID();
+    
+    // DC-DC converter control
+    void setDCVoltage(uint8_t channel, uint16_t voltage_mv);
+    void enableDC(uint8_t channel, bool enable);
+    
+    // LDO control
+    void setALDOVoltage(uint8_t channel, uint16_t voltage_mv);
+    void setBLDOVoltage(uint8_t channel, uint16_t voltage_mv);
+    void enableALDO(uint8_t channel, bool enable);
+    void enableBLDO(uint8_t channel, bool enable);
+
     void UpdateBrightness();
-    bool GetBatState();
-    uint8_t GetBatData();
-
-    void EnableCoulombcounter(void);
-    void DisableCoulombcounter(void);
-    void StopCoulombcounter(void);
-    void ClearCoulombcounter(void);
-    uint32_t GetCoulombchargeData(void);
-    uint32_t GetCoulombdischargeData(void);
-    float GetCoulombData(void);
-
-    uint16_t GetVbatData(void) __attribute__((deprecated));
-    uint16_t GetIchargeData(void) __attribute__((deprecated));
-    uint16_t GetIdischargeData(void) __attribute__((deprecated));
-    uint16_t GetTempData(void) __attribute__((deprecated));
-    uint32_t GetPowerbatData(void) __attribute__((deprecated));
-    uint16_t GetVinData(void) __attribute__((deprecated));
-    uint16_t GetIinData(void) __attribute__((deprecated));
-    uint16_t GetVusbinData(void) __attribute__((deprecated));
-    uint16_t GetIusbinData(void) __attribute__((deprecated));
-    uint16_t GetVapsData(void) __attribute__((deprecated));
-    uint8_t GetBtnPress(void);
-
-      // -- sleep
-    void SetSleep(void);
+    void SetSleep();
     void DeepSleep(uint64_t time_in_us = 0);
     void LightSleep(uint64_t time_in_us = 0);
-
-    // void SetChargeVoltage( uint8_t );
-    void  SetChargeCurrent( uint8_t );
-    float GetBatCurrent();
-    float GetVinVoltage();
-    float GetVinCurrent();
-    float GetVBusVoltage();
-    float GetVBusCurrent();
-    float GetTempInAXP2101();
-    float GetBatPower();
-    float GetBatChargeCurrent();
-    float GetAPSVoltage();
-    float GetBatCoulombInput();
-    float GetBatCoulombOut();
-    uint8_t GetWarningLevel(void);
-    void SetCoulombClear();
-    void SetLDO2( bool State );
-    void SetLDO3( bool State );
-    void SetAdcState(bool State);
-
-    void PowerOff();
-
-
-    void Write1Byte( uint8_t Addr ,  uint8_t Data );
-    uint8_t Read8bit( uint8_t Addr );
-    uint16_t Read12Bit( uint8_t Addr);
-    uint16_t Read13Bit( uint8_t Addr);
-    uint16_t Read16bit( uint8_t Addr );
-    uint32_t Read24bit( uint8_t Addr );
-    uint32_t Read32bit( uint8_t Addr );
-    void ReadBuff( uint8_t Addr , uint8_t Size , uint8_t *Buff );
 };
 
 }
