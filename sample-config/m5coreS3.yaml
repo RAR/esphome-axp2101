@@ -49,7 +49,7 @@ i2c:
 
 axp2101:
   id: axp2101_component
-  update_interval: 60s
+  update_interval: 100ms  # Fast polling for responsive button detection
 
 sensor:
   - platform: axp2101

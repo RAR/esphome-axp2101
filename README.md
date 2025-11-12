@@ -31,7 +31,7 @@ i2c:
 
 axp2101:
   id: axp2101_component
-  update_interval: 60s
+  update_interval: 100ms  # Use 100ms for responsive power button detection
 ```
 
 ### Battery Monitoring
@@ -100,6 +100,8 @@ binary_sensor:
 The power button binary sensors are momentary - they trigger briefly when the event occurs and then reset. This makes them ideal for automation triggers. Use `on_press` actions to respond to button events.
 
 For tracking the actual button state (pressed vs released), use the optional `pkey_positive` and `pkey_negative` sensors.
+
+**Note:** For responsive button detection, set `update_interval` to 100ms or faster. The default 60s interval will cause button events to accumulate and trigger all at once.
 
 ### Brightness Control (Home Assistant)
 

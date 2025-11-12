@@ -260,6 +260,16 @@ void AXP2101Component::initCharger() {
 void AXP2101Component::initInterrupts() {
     ESP_LOGI(TAG, "Initializing interrupts...");
     
+    // Configure power button timing first (register 0x23)
+    // Bits 7-6: Power-on press time
+    // Bits 5-4: IRQ level time  
+    // Bits 3-2: Power-off long press time
+    // Bits 1-0: Power-on long press time
+    // Set to: Power-on=128ms, IRQ=1s, Power-off=4s, Long=1s
+    uint8_t pok_config = (0 << 6) | (0 << 4) | (0 << 2) | (0 << 0); // All shortest timings
+    writeRegister(AXP2101_POK_SET, pok_config);
+    ESP_LOGI(TAG, "Button timing configured: POK_SET=0x%02X", pok_config);
+    
     // Skip GPIO interrupt setup for now - can be added later if needed
     ESP_LOGD(TAG, "Skipping GPIO IRQ pin setup (not critical for basic operation)");
     
@@ -295,6 +305,13 @@ void AXP2101Component::initInterrupts() {
     if (irq_en1 != 0x00) {
         writeRegister(AXP2101_IRQ_EN1, irq_en1);
         ESP_LOGI(TAG, "Power button interrupts enabled: 0x%02X", irq_en1);
+        
+        // Verify the register was written correctly
+        uint8_t verify = 0;
+        readRegister(AXP2101_IRQ_EN1, &verify);
+        ESP_LOGI(TAG, "IRQ_EN1 verification readback: 0x%02X", verify);
+    } else {
+        ESP_LOGD(TAG, "No power button sensors configured, interrupts disabled");
     }
     
     ESP_LOGI(TAG, "Interrupts initialized (polling mode)");
@@ -412,7 +429,7 @@ void AXP2101Component::update() {
         
         // Short press event
         if ((irq[1] & AXP2101_PKEY_SHORT_IRQ) && pkey_short_bsensor_ != nullptr) {
-            ESP_LOGI(TAG, "Power button short press detected");
+            ESP_LOGD(TAG, "Power button short press");
             pkey_short_bsensor_->publish_state(true);
             // Auto-release after publishing
             pkey_short_bsensor_->publish_state(false);
@@ -420,7 +437,7 @@ void AXP2101Component::update() {
         
         // Long press event
         if ((irq[1] & AXP2101_PKEY_LONG_IRQ) && pkey_long_bsensor_ != nullptr) {
-            ESP_LOGI(TAG, "Power button long press detected");
+            ESP_LOGD(TAG, "Power button long press");
             pkey_long_bsensor_->publish_state(true);
             // Auto-release after publishing
             pkey_long_bsensor_->publish_state(false);
