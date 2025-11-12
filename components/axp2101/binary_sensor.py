@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor
-from esphome.const import CONF_ID, DEVICE_CLASS_POWER
+from esphome.const import CONF_ID, DEVICE_CLASS_POWER, DEVICE_CLASS_PROBLEM
 
 from . import AXP2101Component, axp2101_ns
 
@@ -14,6 +14,8 @@ CONF_PKEY_SHORT_PRESS = "pkey_short_press"
 CONF_PKEY_LONG_PRESS = "pkey_long_press"
 CONF_PKEY_POSITIVE = "pkey_positive"
 CONF_PKEY_NEGATIVE = "pkey_negative"
+CONF_LOW_BATTERY_LEVEL1 = "low_battery_level1"
+CONF_LOW_BATTERY_LEVEL2 = "low_battery_level2"
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -28,6 +30,12 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_PKEY_LONG_PRESS): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PKEY_POSITIVE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PKEY_NEGATIVE): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_LOW_BATTERY_LEVEL1): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_PROBLEM
+        ),
+        cv.Optional(CONF_LOW_BATTERY_LEVEL2): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_PROBLEM
+        ),
     }
 )
 
@@ -58,3 +66,12 @@ async def to_code(config):
     if pkey_negative_config := config.get(CONF_PKEY_NEGATIVE):
         sens = await binary_sensor.new_binary_sensor(pkey_negative_config)
         cg.add(axp.set_pkey_negative_bsensor(sens))
+
+    if low_battery_level1_config := config.get(CONF_LOW_BATTERY_LEVEL1):
+        sens = await binary_sensor.new_binary_sensor(low_battery_level1_config)
+        cg.add(axp.set_low_battery_level1_bsensor(sens))
+
+    if low_battery_level2_config := config.get(CONF_LOW_BATTERY_LEVEL2):
+        sens = await binary_sensor.new_binary_sensor(low_battery_level2_config)
+        cg.add(axp.set_low_battery_level2_bsensor(sens))
+

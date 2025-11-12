@@ -178,6 +178,47 @@ bool AXP2101Component::isVBUSGood() {
     return vbus_good || vbus_present;
 }
 
+void AXP2101Component::setChargingLedMode(uint8_t mode) {
+    if (mode > 4) return;  // Valid modes: 0-4
+    
+    uint8_t val = 0;
+    if (!readRegister(AXP2101_CHGLED_SET_CTRL, &val)) {
+        ESP_LOGW(TAG, "Failed to read charging LED control register");
+        return;
+    }
+    
+    // Clear bits 4-5 (mode) and bit 2 (manual control enable)
+    val &= 0xC8;  // Keep bits 7,6,3,1,0 unchanged
+    
+    if (mode == 4) {
+        // Mode 4: Automatic control by charger (bit 2 = 0)
+        val |= 0x01;  // Set bit 0 to enable LED function
+    } else {
+        // Modes 0-3: Manual control (bit 2 = 1)
+        val |= 0x05;  // Set bits 2,0 for manual mode and LED enable
+        val |= (mode << 4);  // Set mode in bits 4-5
+    }
+    
+    writeRegister(AXP2101_CHGLED_SET_CTRL, val);
+    ESP_LOGD(TAG, "Set charging LED mode to %d (reg value: 0x%02X)", mode, val);
+}
+
+uint8_t AXP2101Component::getChargingLedMode() {
+    uint8_t val = 0;
+    if (!readRegister(AXP2101_CHGLED_SET_CTRL, &val)) {
+        return 0;
+    }
+    
+    // Check if manual mode (bit 2 = 1) or automatic (bit 2 = 0)
+    if (val & 0x04) {
+        // Manual mode: return mode from bits 4-5
+        return (val >> 4) & 0x03;
+    } else {
+        // Automatic mode
+        return 4;
+    }
+}
+
 uint16_t AXP2101Component::getVBUSVoltage() {
     uint8_t data[2];
     if (!readRegisterMulti(AXP2101_VBUS_H, data, 2)) {
@@ -282,6 +323,22 @@ void AXP2101Component::initInterrupts() {
     writeRegister(AXP2101_IRQ_EN0, 0x00);
     writeRegister(AXP2101_IRQ_EN1, 0x00);
     writeRegister(AXP2101_IRQ_EN2, 0x00);
+    
+    // Enable low battery warning interrupts if any binary sensors are configured
+    uint8_t irq_en0 = 0x00;
+    if (low_battery_level1_bsensor_ != nullptr) {
+        irq_en0 |= AXP2101_WARNING_LEVEL1_IRQ;
+        ESP_LOGD(TAG, "Enabled low battery warning level 1 interrupt");
+    }
+    if (low_battery_level2_bsensor_ != nullptr) {
+        irq_en0 |= AXP2101_WARNING_LEVEL2_IRQ;
+        ESP_LOGD(TAG, "Enabled low battery warning level 2 interrupt");
+    }
+    
+    if (irq_en0 != 0x00) {
+        writeRegister(AXP2101_IRQ_EN0, irq_en0);
+        ESP_LOGI(TAG, "Low battery warning interrupts enabled: 0x%02X", irq_en0);
+    }
     
     // Enable power button interrupts if any binary sensors are configured
     uint8_t irq_en1 = 0x00;
@@ -390,6 +447,23 @@ void AXP2101Component::setup() {
         this->brightness_number_->publish_state(this->brightness_ * 100.0f);
     }
     
+    // Initialize state-based binary sensors to OFF
+    // (Don't initialize momentary sensors like short/long press - they auto-clear)
+    if (this->low_battery_level1_bsensor_ != nullptr) {
+        this->low_battery_level1_bsensor_->publish_state(false);
+    }
+    if (this->low_battery_level2_bsensor_ != nullptr) {
+        this->low_battery_level2_bsensor_->publish_state(false);
+    }
+    // Note: pkey_positive sensor appears inverted - starts TRUE (button not pressed)
+    // Will go FALSE when button pressed, TRUE when released
+    if (this->pkey_positive_bsensor_ != nullptr) {
+        this->pkey_positive_bsensor_->publish_state(true);
+    }
+    if (this->pkey_negative_bsensor_ != nullptr) {
+        this->pkey_negative_bsensor_->publish_state(false);
+    }
+    
     ESP_LOGCONFIG(TAG, "AXP2101 setup complete");
 }
 
@@ -423,6 +497,26 @@ void AXP2101Component::update() {
     readRegister(AXP2101_IRQ_STATUS1, &irq[1]);
     readRegister(AXP2101_IRQ_STATUS2, &irq[2]);
     
+    // Check for low battery warning events in IRQ_STATUS0
+    if (irq[0] != 0x00) {
+        ESP_LOGD(TAG, "IRQ_STATUS0: 0x%02X", irq[0]);
+        
+        // Warning level 1 (higher threshold, first warning)
+        if ((irq[0] & AXP2101_WARNING_LEVEL1_IRQ) && low_battery_level1_bsensor_ != nullptr) {
+            ESP_LOGW(TAG, "Low battery warning level 1!");
+            low_battery_level1_bsensor_->publish_state(true);
+        }
+        
+        // Warning level 2 (lower threshold, critical warning)
+        if ((irq[0] & AXP2101_WARNING_LEVEL2_IRQ) && low_battery_level2_bsensor_ != nullptr) {
+            ESP_LOGW(TAG, "Low battery warning level 2 (critical)!");
+            low_battery_level2_bsensor_->publish_state(true);
+        }
+        
+        // Clear the interrupt flags we just processed
+        writeRegister(AXP2101_IRQ_STATUS0, irq[0]);
+    }
+    
     // Check for power button events in IRQ_STATUS1
     if (irq[1] != 0x00) {
         ESP_LOGD(TAG, "IRQ_STATUS1: 0x%02X", irq[1]);
@@ -431,7 +525,7 @@ void AXP2101Component::update() {
         if ((irq[1] & AXP2101_PKEY_SHORT_IRQ) && pkey_short_bsensor_ != nullptr) {
             ESP_LOGD(TAG, "Power button short press");
             pkey_short_bsensor_->publish_state(true);
-            // Auto-release after publishing
+            delay_microseconds_safe(50000);  // 50ms delay to ensure event is registered
             pkey_short_bsensor_->publish_state(false);
         }
         
@@ -439,23 +533,28 @@ void AXP2101Component::update() {
         if ((irq[1] & AXP2101_PKEY_LONG_IRQ) && pkey_long_bsensor_ != nullptr) {
             ESP_LOGD(TAG, "Power button long press");
             pkey_long_bsensor_->publish_state(true);
-            // Auto-release after publishing
+            delay_microseconds_safe(50000);  // 50ms delay to ensure event is registered
             pkey_long_bsensor_->publish_state(false);
         }
         
         // Positive edge (button pressed down)
         if ((irq[1] & AXP2101_PKEY_POSITIVE_IRQ) && pkey_positive_bsensor_ != nullptr) {
             ESP_LOGD(TAG, "Power button pressed (positive edge)");
-            pkey_positive_bsensor_->publish_state(true);
+            pkey_positive_bsensor_->publish_state(false);  // Inverted: goes OFF when pressed
         }
         
         // Negative edge (button released)
-        if ((irq[1] & AXP2101_PKEY_NEGATIVE_IRQ) && pkey_negative_bsensor_ != nullptr) {
+        if ((irq[1] & AXP2101_PKEY_NEGATIVE_IRQ)) {
             ESP_LOGD(TAG, "Power button released (negative edge)");
-            pkey_negative_bsensor_->publish_state(false);
-            // Also clear the positive edge sensor if it was set
+            // Set the positive edge sensor (button no longer held)
             if (pkey_positive_bsensor_ != nullptr) {
-                pkey_positive_bsensor_->publish_state(false);
+                pkey_positive_bsensor_->publish_state(true);  // Inverted: goes ON when released
+            }
+            // Trigger the negative edge sensor momentarily
+            if (pkey_negative_bsensor_ != nullptr) {
+                pkey_negative_bsensor_->publish_state(true);
+                delay_microseconds_safe(50000);  // 50ms delay
+                pkey_negative_bsensor_->publish_state(false);
             }
         }
         
@@ -464,9 +563,6 @@ void AXP2101Component::update() {
     }
     
     // Clear other interrupt flags if present
-    if (irq[0] != 0x00) {
-        writeRegister(AXP2101_IRQ_STATUS0, irq[0]);
-    }
     if (irq[2] != 0x00) {
         writeRegister(AXP2101_IRQ_STATUS2, irq[2]);
     }
@@ -497,6 +593,15 @@ void AXP2101Component::update() {
         
         ESP_LOGD(TAG, "Battery Level: %.0f%%", battery_level);
         this->batterylevel_sensor_->publish_state(battery_level);
+        
+        // Clear low battery warnings if battery level improves
+        // Typically level 1 = ~15%, level 2 = ~5%
+        if (battery_level > 15.0f && low_battery_level1_bsensor_ != nullptr) {
+            low_battery_level1_bsensor_->publish_state(false);
+        }
+        if (battery_level > 5.0f && low_battery_level2_bsensor_ != nullptr) {
+            low_battery_level2_bsensor_->publish_state(false);
+        }
     }
     
     // Update charging status

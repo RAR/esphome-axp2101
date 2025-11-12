@@ -17,5 +17,17 @@ void AXP2101Number::control(float value) {
   this->publish_state(value);
 }
 
+void AXP2101ChargingLedNumber::dump_config() {
+  LOG_NUMBER("", "AXP2101 Charging LED", this);
+}
+
+void AXP2101ChargingLedNumber::control(float value) {
+  uint8_t mode = static_cast<uint8_t>(value);
+  if (mode <= 4) {
+    this->parent_->setChargingLedMode(mode);
+    this->publish_state(value);
+  }
+}
+
 }  // namespace axp2101
 }  // namespace esphome
