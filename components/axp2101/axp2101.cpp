@@ -236,11 +236,12 @@ float AXP2101Component::getTemperature() {
     if (!readRegisterMulti(AXP2101_TS_H, data, 2)) {
         return 0.0f;
     }
-    // 14-bit value
-    uint16_t raw = ((uint16_t)data[0] << 6) | (data[1] & 0x3F);
-    // Formula from AXP2101 datasheet: T = 22 - (7274 - raw) / 20
+    // 14-bit value: High 6 bits in data[0], Low 8 bits in data[1]
+    // XPowersLib uses readRegisterH6L8: (data[0] << 8) | data[1], masked to 14 bits
+    uint16_t raw = (((uint16_t)data[0] << 8) | data[1]) & 0x3FFF;  // Mask to 14 bits
+    // Formula from XPowersLib: T(°C) = 22.0 + (7274 - raw) / 20.0
     // This gives internal die temperature in °C
-    float temp = 22.0f - (7274.0f - (float)raw) / 20.0f;
+    float temp = 22.0f + (7274.0f - (float)raw) / 20.0f;
     return temp;
 }
 
