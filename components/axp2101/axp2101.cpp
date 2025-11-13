@@ -702,30 +702,50 @@ void AXP2101Component::update() {
 void AXP2101Component::UpdateBrightness() {
     if (brightness_ == curr_brightness_) return;
     
-    uint16_t new_voltage_mv = 500;  // Minimum voltage (off)
-    
-    if (brightness_ > 0.0f) {
-        // Map brightness 0.0-1.0 to voltage 2500-3300mV for M5CORE2, 500-3400mV for M5CORES3
-        float min_voltage = (model_ == AXP2101_M5CORE2) ? 2500.0f : 500.0f;
-        float max_voltage = (model_ == AXP2101_M5CORE2) ? 3300.0f : 3400.0f;
-        const float voltage_step = 100.0f;
-        
-        float target_mv = min_voltage + (brightness_ * (max_voltage - min_voltage));
-        new_voltage_mv = (uint16_t)(std::ceil(target_mv / voltage_step) * voltage_step);
-        
-        ESP_LOGD(TAG, "Setting backlight: %.0f%% -> %dmV (%s)", brightness_ * 100.0f, new_voltage_mv,
-                 model_ == AXP2101_M5CORE2 ? "BLDO1" : "DLDO1");
-    } else {
-        ESP_LOGD(TAG, "Turning backlight off");
-    }
-    
     curr_brightness_ = brightness_;
     
     // BLDO1 controls backlight on M5Core2, DLDO1 on CoreS3
     if (model_ == AXP2101_M5CORE2) {
+        // M5Core2: Linear mapping 2500-3300mV
+        uint16_t new_voltage_mv = 500;  // Minimum voltage (off)
+        
+        if (brightness_ > 0.0f) {
+            const float min_voltage = 2500.0f;
+            const float max_voltage = 3300.0f;
+            const float voltage_step = 100.0f;
+            
+            float target_mv = min_voltage + (brightness_ * (max_voltage - min_voltage));
+            new_voltage_mv = (uint16_t)(std::ceil(target_mv / voltage_step) * voltage_step);
+            
+            ESP_LOGD(TAG, "Setting backlight: %.0f%% -> %dmV (BLDO1)", brightness_ * 100.0f, new_voltage_mv);
+        } else {
+            ESP_LOGD(TAG, "Turning backlight off");
+        }
+        
         setBLDOVoltage(0, new_voltage_mv);
+        if (brightness_ > 0.0f) {
+            enableBLDO(0, true);
+        } else {
+            enableBLDO(0, false);
+        }
     } else {
-        setDLDOVoltage(0, new_voltage_mv);
+        // M5CoreS3: Use M5GFX formula for DLDO1
+        // Formula: voltage_level = ((brightness_byte + 641) >> 5)
+        // This maps 0-255 brightness to voltage levels 20-28 (2.5V-3.3V in 100mV steps)
+        if (brightness_ > 0.0f) {
+            uint8_t brightness_byte = (uint8_t)(brightness_ * 255.0f);
+            uint8_t voltage_level = (uint8_t)(((uint16_t)brightness_byte + 641) >> 5);
+            
+            ESP_LOGD(TAG, "Setting backlight: %.0f%% -> level %d (DLDO1)", brightness_ * 100.0f, voltage_level);
+            
+            // Set voltage first
+            writeRegister(AXP2101_DLDO_VOL0, voltage_level);
+            // Then enable
+            enableDLDO(0, true);
+        } else {
+            ESP_LOGD(TAG, "Turning backlight off");
+            enableDLDO(0, false);
+        }
     }
 }
 
