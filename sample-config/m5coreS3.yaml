@@ -53,14 +53,11 @@ aw9523:
 
 axp2101:
   id: axp2101_component
+  model: M5CORES3
 
 sensor:
   - platform: axp2101
     axp2101_id: axp2101_component
-    model: M5CORES3
-    address: 0x34
-    i2c_id: bus_a
-    update_interval: 30s
     battery_voltage:
       name: "Battery Voltage"
     battery_level:
@@ -68,24 +65,11 @@ sensor:
     temperature:
       name: "PMU Temperature"
 
-# Backlight control via AXP2101 DLDO1
-# M5Stack CoreS3 uses DLDO1 voltage to control backlight brightness
-output:
-  - platform: axp2101
-    id: backlight_output
-    axp2101_id: axp2101_component
-
-light:
-  - platform: monochromatic
-    id: backlight_light
-    name: "Backlight"
-    output: backlight_output
-    restore_mode: ALWAYS_ON
-    default_transition_length: 0s
-
 number:
   - platform: axp2101
     axp2101_id: axp2101_component
+    backlight:
+      name: "Backlight Brightness"
     charging_led_mode:
       name: "Charging LED Mode"
       # Modes: 0=Off, 1=Blink 1Hz, 2=Blink 4Hz, 3=On, 4=Auto (controlled by charger)

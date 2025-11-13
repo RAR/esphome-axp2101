@@ -49,15 +49,12 @@ i2c:
 
 axp2101:
   id: axp2101_component
+  model: M5CORE2
   update_interval: 100ms  # Fast polling for responsive button detection
 
 sensor:
   - platform: axp2101
-    model: M5CORE2
-    address: 0x34
-    i2c_id: bus_a
-    update_interval: 30s
-    brightness: 75%
+    axp2101_id: axp2101_component
     battery_voltage:
       name: "Battery Voltage"
     battery_level:

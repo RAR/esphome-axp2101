@@ -56,6 +56,8 @@ async def to_code(config):
         num = await number.new_number(conf, min_value=0, max_value=100, step=5)
         await cg.register_component(num, conf)
         cg.add(num.set_parent(parent))
+        cg.add(num.set_initial_value(conf.get("initial_value", 100.0)))
+        cg.add(num.set_restore_value(conf.get("restore_value", True)))
         cg.add(parent.set_brightness_number(num))
     
     if CONF_CHARGING_LED_MODE in config:

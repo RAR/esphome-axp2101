@@ -127,6 +127,37 @@ void AXP2101Component::enableBLDO(uint8_t channel, bool enable) {
     }
 }
 
+void AXP2101Component::setDLDOVoltage(uint8_t channel, uint16_t voltage_mv) {
+    if (channel > 1) return;
+    uint8_t reg = AXP2101_DLDO_VOL0 + channel;
+    
+    // DLDO: 500-3400mV, 100mV/step
+    if (voltage_mv >= 500 && voltage_mv <= 3400) {
+        uint8_t value = (voltage_mv - 500) / 100;
+        writeRegister(reg, value);
+    }
+}
+
+void AXP2101Component::enableDLDO(uint8_t channel, bool enable) {
+    if (channel > 1) return;
+    uint8_t mask = 1 << (channel + 7);  // DLDO1/2 are bits 7 and bit 0 of next register
+    if (channel == 0) {
+        // DLDO1 is bit 7 of LDO_ONOFF_CTRL0
+        if (enable) {
+            setBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+        } else {
+            clearBits(AXP2101_LDO_ONOFF_CTRL0, mask);
+        }
+    } else {
+        // DLDO2 is bit 0 of LDO_ONOFF_CTRL1
+        if (enable) {
+            setBits(AXP2101_LDO_ONOFF_CTRL1, 0x01);
+        } else {
+            clearBits(AXP2101_LDO_ONOFF_CTRL1, 0x01);
+        }
+    }
+}
+
 // Battery and charging methods
 uint16_t AXP2101Component::getBatteryVoltage() {
     uint8_t data[2];
@@ -259,25 +290,45 @@ void AXP2101Component::initPowerOutputs() {
     
     ESP_LOGD(TAG, "Current power states - DC: 0x%02X, LDO0: 0x%02X, LDO1: 0x%02X", dc_state, ldo_state0, ldo_state1);
     
-    // Only set BLDO1 voltage for backlight control (safe to modify)
-    ESP_LOGD(TAG, "Setting BLDO1 for backlight...");
-    setBLDOVoltage(0, 3300);  // BLDO1: Backlight
-    
-    // Ensure BLDO1 is enabled for backlight
-    bool bldo1_enabled = (ldo_state0 & (1 << 4));
-    ESP_LOGD(TAG, "BLDO1 status: %s (bit 4 = %d)", bldo1_enabled ? "ENABLED" : "DISABLED", bldo1_enabled);
-    
-    if (!bldo1_enabled) {
-        ESP_LOGD(TAG, "Enabling BLDO1...");
-        enableBLDO(0, true);
+    // Configure backlight based on model
+    if (model_ == AXP2101_M5CORE2) {
+        ESP_LOGD(TAG, "Setting BLDO1 for M5Core2 backlight...");
+        setBLDOVoltage(0, 3300);  // BLDO1: Backlight
+        
+        bool bldo1_enabled = (ldo_state0 & (1 << 4));
+        ESP_LOGD(TAG, "BLDO1 status: %s (bit 4 = %d)", bldo1_enabled ? "ENABLED" : "DISABLED", bldo1_enabled);
+        
+        if (!bldo1_enabled) {
+            ESP_LOGD(TAG, "Enabling BLDO1...");
+            enableBLDO(0, true);
+        } else {
+            ESP_LOGD(TAG, "BLDO1 already enabled, verifying voltage is set...");
+        }
+        
+        // Read back to verify
+        uint8_t bldo1_voltage;
+        readRegister(AXP2101_BLDO_VOL0, &bldo1_voltage);
+        ESP_LOGD(TAG, "BLDO1 voltage register: 0x%02X (%d mV)", bldo1_voltage, (bldo1_voltage * 100) + 500);
     } else {
-        ESP_LOGD(TAG, "BLDO1 already enabled, verifying voltage is set...");
+        // M5CORES3 uses DLDO1 for backlight
+        ESP_LOGD(TAG, "Setting DLDO1 for CoreS3 backlight...");
+        setDLDOVoltage(0, 3400);  // DLDO1: Backlight (max voltage)
+        
+        bool dldo1_enabled = (ldo_state0 & (1 << 7));
+        ESP_LOGD(TAG, "DLDO1 status: %s (bit 7 = %d)", dldo1_enabled ? "ENABLED" : "DISABLED", dldo1_enabled);
+        
+        if (!dldo1_enabled) {
+            ESP_LOGD(TAG, "Enabling DLDO1...");
+            enableDLDO(0, true);
+        } else {
+            ESP_LOGD(TAG, "DLDO1 already enabled, verifying voltage is set...");
+        }
+        
+        // Read back to verify
+        uint8_t dldo1_voltage;
+        readRegister(AXP2101_DLDO_VOL0, &dldo1_voltage);
+        ESP_LOGD(TAG, "DLDO1 voltage register: 0x%02X (%d mV)", dldo1_voltage, (dldo1_voltage * 100) + 500);
     }
-    
-    // Read back to verify
-    uint8_t bldo1_voltage;
-    readRegister(AXP2101_BLDO_VOL0, &bldo1_voltage);
-    ESP_LOGD(TAG, "BLDO1 voltage register: 0x%02X (%d mV)", bldo1_voltage, (bldo1_voltage * 100) + 500);
     
     ESP_LOGI(TAG, "Power outputs initialized (conservative mode)");
 }
@@ -654,23 +705,28 @@ void AXP2101Component::UpdateBrightness() {
     uint16_t new_voltage_mv = 500;  // Minimum voltage (off)
     
     if (brightness_ > 0.0f) {
-        // Map brightness 0.0-1.0 to voltage 2500-3300mV
-        const float min_voltage = 2500.0f;
-        const float max_voltage = 3300.0f;
+        // Map brightness 0.0-1.0 to voltage 2500-3300mV for M5CORE2, 500-3400mV for M5CORES3
+        float min_voltage = (model_ == AXP2101_M5CORE2) ? 2500.0f : 500.0f;
+        float max_voltage = (model_ == AXP2101_M5CORE2) ? 3300.0f : 3400.0f;
         const float voltage_step = 100.0f;
         
         float target_mv = min_voltage + (brightness_ * (max_voltage - min_voltage));
         new_voltage_mv = (uint16_t)(std::ceil(target_mv / voltage_step) * voltage_step);
         
-        ESP_LOGD(TAG, "Setting backlight: %.0f%% -> %dmV", brightness_ * 100.0f, new_voltage_mv);
+        ESP_LOGD(TAG, "Setting backlight: %.0f%% -> %dmV (%s)", brightness_ * 100.0f, new_voltage_mv,
+                 model_ == AXP2101_M5CORE2 ? "BLDO1" : "DLDO1");
     } else {
         ESP_LOGD(TAG, "Turning backlight off");
     }
     
     curr_brightness_ = brightness_;
     
-    // BLDO1 controls backlight on M5Core2
-    setBLDOVoltage(0, new_voltage_mv);
+    // BLDO1 controls backlight on M5Core2, DLDO1 on CoreS3
+    if (model_ == AXP2101_M5CORE2) {
+        setBLDOVoltage(0, new_voltage_mv);
+    } else {
+        setDLDOVoltage(0, new_voltage_mv);
+    }
 }
 
 void AXP2101Component::SetSleep() {

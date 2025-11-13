@@ -212,10 +212,13 @@ protected:
     // LDO control
     void setALDOVoltage(uint8_t channel, uint16_t voltage_mv);
     void setBLDOVoltage(uint8_t channel, uint16_t voltage_mv);
+    void setDLDOVoltage(uint8_t channel, uint16_t voltage_mv);
     void enableALDO(uint8_t channel, bool enable);
     void enableBLDO(uint8_t channel, bool enable);
+    void enableDLDO(uint8_t channel, bool enable);
 
     void UpdateBrightness();
+    AXP2101Model getModel() const { return model_; }
     void SetSleep();
     void DeepSleep(uint64_t time_in_us = 0);
     void LightSleep(uint64_t time_in_us = 0);

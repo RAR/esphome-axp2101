@@ -4,9 +4,7 @@ from esphome.components import binary_sensor, i2c, sensor
 from esphome.const import (
     CONF_BATTERY_LEVEL,
     CONF_BATTERY_VOLTAGE,
-    CONF_BRIGHTNESS,
     CONF_ID,
-    CONF_MODEL,
     CONF_TEMPERATURE,
     DEVICE_CLASS_BATTERY_CHARGING,
     DEVICE_CLASS_TEMPERATURE,
@@ -19,18 +17,9 @@ from esphome.const import (
     UNIT_PERCENT,
     UNIT_VOLT,
 )
-from . import axp2101_ns, AXP2101Component
+from . import axp2101_ns, AXP2101Component, CONF_AXP2101_ID
 
-DEPENDENCIES = ["i2c"]
-
-AXP2101Model = axp2101_ns.enum("AXP2101Model")
-
-MODELS = {
-    "M5CORE2": AXP2101Model.AXP2101_M5CORE2,
-    "M5CORES3": AXP2101Model.AXP2101_M5CORES3,
-}
-
-AXP2101_MODEL = cv.enum(MODELS, upper=True, space="_")
+DEPENDENCIES = ["axp2101"]
 
 CONF_BATTERY_CHARGING = "battery_charging"
 CONF_VBUS_VOLTAGE = "vbus_voltage"
@@ -39,8 +28,7 @@ CONF_VBUS_CONNECTED = "vbus_connected"
 CONFIG_SCHEMA = (
     cv.Schema(
         {
-            cv.GenerateID(): cv.declare_id(AXP2101Component),
-            cv.Required(CONF_MODEL): AXP2101_MODEL,
+            cv.GenerateID(CONF_AXP2101_ID): cv.use_id(AXP2101Component),
             cv.Optional(CONF_BATTERY_VOLTAGE): sensor.sensor_schema(
                 device_class=DEVICE_CLASS_VOLTAGE,
                 unit_of_measurement=UNIT_VOLT,
@@ -75,53 +63,40 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            cv.Optional(CONF_BRIGHTNESS, default=1.0): cv.percentage,
         }
     )
-    .extend(cv.polling_component_schema("60s"))
-    .extend(i2c.i2c_device_schema(0x77))
 )
 
 
-def to_code(config):
-    var = cg.new_Pvariable(config[CONF_ID])
-    yield cg.register_component(var, config)
-    yield i2c.register_i2c_device(var, config)
-
-    # No external library needed - using direct I2C register access
-
-    cg.add(var.set_model(config[CONF_MODEL]))
+async def to_code(config):
+    parent = await cg.get_variable(config[CONF_AXP2101_ID])
 
     if CONF_BATTERY_VOLTAGE in config:
         conf = config[CONF_BATTERY_VOLTAGE]
-        sens = yield sensor.new_sensor(conf)
-        cg.add(var.set_batteryvoltage_sensor(sens))
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_batteryvoltage_sensor(sens))
 
     if CONF_BATTERY_LEVEL in config:
         conf = config[CONF_BATTERY_LEVEL]
-        sens = yield sensor.new_sensor(conf)
-        cg.add(var.set_batterylevel_sensor(sens))
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_batterylevel_sensor(sens))
 
     if CONF_BATTERY_CHARGING in config:
         conf = config[CONF_BATTERY_CHARGING]
-        sens = yield binary_sensor.new_binary_sensor(conf)
-        cg.add(var.set_batterycharging_bsensor(sens))
+        sens = await binary_sensor.new_binary_sensor(conf)
+        cg.add(parent.set_batterycharging_bsensor(sens))
 
     if CONF_VBUS_VOLTAGE in config:
         conf = config[CONF_VBUS_VOLTAGE]
-        sens = yield sensor.new_sensor(conf)
-        cg.add(var.set_vbusvoltage_sensor(sens))
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_vbusvoltage_sensor(sens))
 
     if CONF_VBUS_CONNECTED in config:
         conf = config[CONF_VBUS_CONNECTED]
-        sens = yield binary_sensor.new_binary_sensor(conf)
-        cg.add(var.set_vbusconnected_bsensor(sens))
+        sens = await binary_sensor.new_binary_sensor(conf)
+        cg.add(parent.set_vbusconnected_bsensor(sens))
 
     if CONF_TEMPERATURE in config:
         conf = config[CONF_TEMPERATURE]
-        sens = yield sensor.new_sensor(conf)
-        cg.add(var.set_temperature_sensor(sens))
-
-    if CONF_BRIGHTNESS in config:
-        conf = config[CONF_BRIGHTNESS]
-        cg.add(var.set_brightness(conf))
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_temperature_sensor(sens))

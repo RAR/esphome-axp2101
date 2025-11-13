@@ -25,7 +25,7 @@ Copy the `components` directory to your ESPHome project, or include directly fro
 
 ### Basic Component Setup
 
-First, define the main AXP2101 component:
+First, define the main AXP2101 component with your device model:
 
 ```yaml
 i2c:
@@ -36,8 +36,15 @@ i2c:
 
 axp2101:
   id: axp2101_component
+  model: M5CORE2  # Use M5CORES3 for CoreS3
+  address: 0x34
+  i2c_id: bus_a
   update_interval: 100ms  # Use 100ms for responsive power button detection
 ```
+
+**Model Selection:**
+- `M5CORE2` - For M5Stack Core2 V1.1 (uses BLDO1 for backlight)
+- `M5CORES3` - For M5Stack CoreS3 (uses DLDO1 for backlight)
 
 ### Battery Monitoring
 
@@ -46,11 +53,7 @@ Add sensor platform for battery metrics:
 ```yaml
 sensor:
   - platform: axp2101
-    model: M5CORE2  # Use M5CORES3 for CoreS3
-    address: 0x34
-    i2c_id: bus_a
-    update_interval: 30s
-    brightness: 75%  # Only for M5CORE2 model
+    axp2101_id: axp2101_component
     battery_voltage:
       name: "Battery Voltage"
     battery_level:
@@ -58,10 +61,6 @@ sensor:
     temperature:
       name: "PMU Temperature"
 ```
-
-**Model Selection:**
-- `M5CORE2` - For M5Stack Core2 V1.1 (uses BLDO1 for backlight)
-- `M5CORES3` - For M5Stack CoreS3 (uses DLDO1 for backlight via output platform)
 
 **Available Sensors:**
 - `battery_voltage` - Battery voltage in volts (V)
@@ -125,22 +124,24 @@ For tracking the actual button state (pressed vs released), use the optional `pk
 
 **Note:** For responsive button detection, set `update_interval` to 100ms or faster. The default 60s interval will cause button events to accumulate and trigger all at once.
 
-### Brightness Control (Home Assistant)
+### Brightness and LED Control
 
-Add number platform for interactive brightness control and charging LED mode:
+Add number platform for brightness and charging LED control:
 
 ```yaml
 number:
   - platform: axp2101
     axp2101_id: axp2101_component
     backlight:
-      name: "Backlight Brightness"  # Only for M5CORE2 model
+      name: "Backlight Brightness"
     charging_led_mode:
       name: "Charging LED Mode"
 ```
 
 **Available Number Entities:**
-- `backlight` - Display backlight brightness slider (0-100%) - **M5Core2 only**
+- `backlight` - Display backlight brightness slider (0-100%) - **Works for both M5Core2 and CoreS3**
+  - M5Core2: Controls BLDO1 voltage (2500-3300mV)
+  - CoreS3: Controls DLDO1 voltage (500-3400mV)
 - `charging_led_mode` - Charging LED behavior control (0-4)
   - 0: Off
   - 1: Blink 1Hz
@@ -148,28 +149,7 @@ number:
   - 3: On (solid)
   - 4: Auto (controlled by charger)
 
-The backlight creates a 0-100% slider in Home Assistant that controls the display backlight brightness in real-time (M5Core2 only - CoreS3 uses the output platform). The charging LED mode allows you to customize the LED behavior, either manually or automatically based on charging status.
-
-### CoreS3 Backlight Control (Output Platform)
-
-For M5Stack CoreS3, use the dedicated output platform for DLDO1 backlight control:
-
-```yaml
-output:
-  - platform: axp2101
-    id: backlight_output
-    axp2101_id: axp2101_component
-
-light:
-  - platform: monochromatic
-    output: backlight_output
-    name: "Backlight"
-    id: backlight
-    restore_mode: ALWAYS_ON
-    default_transition_length: 0s
-```
-
-This creates a light entity in Home Assistant with brightness control (0-100%) that directly controls the CoreS3's DLDO1 regulator for smooth backlight adjustment.
+The backlight creates a 0-100% slider in Home Assistant that controls the display backlight brightness in real-time. The component automatically uses the appropriate regulator (BLDO1 or DLDO1) based on the model specified in the main axp2101 component configuration.
 
 ### Complete Example
 
@@ -273,9 +253,9 @@ Note: CoreS3 uses the AW9523 GPIO expander pin P1_1 for LCD reset.
 
 ### Backlight Control
 - **M5Core2:** Adjustable brightness (0-100%) via number platform using BLDO1 (2500-3300mV)
-- **CoreS3:** Adjustable brightness (0-100%) via output/light platform using DLDO1 (500-3400mV)
+- **CoreS3:** Adjustable brightness (0-100%) via number platform using DLDO1 (500-3400mV)
 - Real-time brightness adjustment
-- Model-specific voltage control
+- Model-specific voltage control (automatically selected based on model parameter)
 
 ### Power Management
 - Conservative initialization to prevent system crashes
