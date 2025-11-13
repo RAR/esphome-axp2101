@@ -418,10 +418,12 @@ void AXP2101Component::initInterrupts() {
         ESP_LOGD(TAG, "Enabled PKEY long press interrupt");
     }
     if (pkey_positive_bsensor_ != nullptr) {
-        irq_en1 |= AXP2101_PKEY_POSITIVE_IRQ;
-        ESP_LOGD(TAG, "Enabled PKEY positive edge interrupt");
+        // Enable both positive and negative edge to track button hold state
+        irq_en1 |= AXP2101_PKEY_POSITIVE_IRQ | AXP2101_PKEY_NEGATIVE_IRQ;
+        ESP_LOGD(TAG, "Enabled PKEY positive/negative edge interrupts");
     }
     if (pkey_negative_bsensor_ != nullptr) {
+        // Already enabled above if pkey_positive exists, but enable if standalone
         irq_en1 |= AXP2101_PKEY_NEGATIVE_IRQ;
         ESP_LOGD(TAG, "Enabled PKEY negative edge interrupt");
     }
@@ -514,6 +516,13 @@ void AXP2101Component::setup() {
         this->brightness_number_->publish_state(this->brightness_ * 100.0f);
     }
     
+    // Read and publish current charging LED mode
+    if (this->charging_led_number_ != nullptr) {
+        uint8_t current_mode = getChargingLedMode();
+        ESP_LOGD(TAG, "Current charging LED mode: %d", current_mode);
+        this->charging_led_number_->publish_state(current_mode);
+    }
+    
     // Initialize state-based binary sensors to OFF
     // (Don't initialize momentary sensors like short/long press - they auto-clear)
     if (this->low_battery_level1_bsensor_ != nullptr) {
@@ -522,13 +531,20 @@ void AXP2101Component::setup() {
     if (this->low_battery_level2_bsensor_ != nullptr) {
         this->low_battery_level2_bsensor_->publish_state(false);
     }
-    // Note: pkey_positive sensor appears inverted - starts TRUE (button not pressed)
-    // Will go FALSE when button pressed, TRUE when released
+    
+    // Initialize button sensors with correct default states
+    // pkey_positive is inverted: true=not pressed (default), false=pressed
     if (this->pkey_positive_bsensor_ != nullptr) {
-        this->pkey_positive_bsensor_->publish_state(true);
+        this->pkey_positive_bsensor_->publish_state(false);  // Default to OFF (not pressed)
     }
     if (this->pkey_negative_bsensor_ != nullptr) {
-        this->pkey_negative_bsensor_->publish_state(false);
+        this->pkey_negative_bsensor_->publish_state(false);  // Default to OFF
+    }
+    if (this->pkey_short_bsensor_ != nullptr) {
+        this->pkey_short_bsensor_->publish_state(false);  // Default to OFF
+    }
+    if (this->pkey_long_bsensor_ != nullptr) {
+        this->pkey_long_bsensor_->publish_state(false);  // Default to OFF
     }
     
     ESP_LOGCONFIG(TAG, "AXP2101 setup complete");
@@ -557,8 +573,13 @@ float AXP2101Component::get_setup_priority() const {
     return setup_priority::DATA; 
 }
 
-void AXP2101Component::update() {
-    // Always read interrupt status registers to check for events
+void AXP2101Component::loop() {
+    // Fast polling for interrupts/buttons - runs every loop cycle
+    check_interrupts();
+}
+
+void AXP2101Component::check_interrupts() {
+    // Read interrupt status registers to check for events
     uint8_t irq[3];
     readRegister(AXP2101_IRQ_STATUS0, &irq[0]);
     readRegister(AXP2101_IRQ_STATUS1, &irq[1]);
@@ -606,22 +627,24 @@ void AXP2101Component::update() {
         
         // Positive edge (button pressed down)
         if ((irq[1] & AXP2101_PKEY_POSITIVE_IRQ) && pkey_positive_bsensor_ != nullptr) {
-            ESP_LOGD(TAG, "Power button pressed (positive edge)");
-            pkey_positive_bsensor_->publish_state(false);  // Inverted: goes OFF when pressed
+            ESP_LOGD(TAG, "Power button pressed (positive edge) - setting sensor OFF");
+            pkey_positive_bsensor_->publish_state(false);  // OFF - IRQ semantics are inverted
         }
         
         // Negative edge (button released)
         if ((irq[1] & AXP2101_PKEY_NEGATIVE_IRQ)) {
-            ESP_LOGD(TAG, "Power button released (negative edge)");
+            ESP_LOGD(TAG, "Power button released (negative edge) - setting sensor ON");
             // Set the positive edge sensor (button no longer held)
             if (pkey_positive_bsensor_ != nullptr) {
-                pkey_positive_bsensor_->publish_state(true);  // Inverted: goes ON when released
+                pkey_positive_bsensor_->publish_state(true);  // ON - IRQ semantics are inverted
+                ESP_LOGD(TAG, "pkey_positive sensor set to ON");
             }
             // Trigger the negative edge sensor momentarily
             if (pkey_negative_bsensor_ != nullptr) {
                 pkey_negative_bsensor_->publish_state(true);
                 delay_microseconds_safe(50000);  // 50ms delay
                 pkey_negative_bsensor_->publish_state(false);
+                ESP_LOGD(TAG, "pkey_negative sensor pulsed");
             }
         }
         
@@ -633,6 +656,10 @@ void AXP2101Component::update() {
     if (irq[2] != 0x00) {
         writeRegister(AXP2101_IRQ_STATUS2, irq[2]);
     }
+}
+
+void AXP2101Component::update() {
+    // Sensor readings - runs at update_interval (can be slow, e.g., 60s)
     
     // Update battery voltage
     if (this->batteryvoltage_sensor_ != nullptr) {
@@ -644,22 +671,27 @@ void AXP2101Component::update() {
     
     // Update battery level
     if (this->batterylevel_sensor_ != nullptr) {
-        float battery_level;
+        float battery_level = 0.0f;
         
         if (isBatteryConnected()) {
             battery_level = getBatteryPercent();
+            
+            // If battery percent register returns 0, fall back to voltage-based calculation
+            if (battery_level == 0) {
+                uint16_t vbat_mv = getBatteryVoltage();
+                float vbat_v = vbat_mv / 1000.0f;
+                battery_level = (vbat_v - 3.0f) / (4.1f - 3.0f) * 100.0f;
+                if (battery_level > 100.0f) battery_level = 100.0f;
+                if (battery_level < 0.0f) battery_level = 0.0f;
+            }
+            
+            ESP_LOGD(TAG, "Battery Level: %.0f%%", battery_level);
+            this->batterylevel_sensor_->publish_state(battery_level);
         } else {
-            // Fallback calculation if battery gauge not available
-            uint16_t vbat_mv = getBatteryVoltage();
-            float vbat_v = vbat_mv / 1000.0f;
-            battery_level = (vbat_v - 3.0f) / (4.1f - 3.0f) * 100.0f;
+            // No battery connected - report NaN to indicate unavailable
+            ESP_LOGD(TAG, "Battery Level: No battery connected");
+            this->batterylevel_sensor_->publish_state(NAN);
         }
-        
-        if (battery_level > 100.0f) battery_level = 100.0f;
-        if (battery_level < 0.0f) battery_level = 0.0f;
-        
-        ESP_LOGD(TAG, "Battery Level: %.0f%%", battery_level);
-        this->batterylevel_sensor_->publish_state(battery_level);
         
         // Clear low battery warnings if battery level improves
         // Typically level 1 = ~15%, level 2 = ~5%

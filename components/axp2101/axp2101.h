@@ -149,9 +149,11 @@ public:
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override;
-  void update() override;
+  void update() override;  // Called at update_interval for sensor readings
+  void loop() override;    // Called every loop for fast button polling
 
 private:
+  void check_interrupts();  // Fast interrupt/button check
     static std::string GetStartupReason();
 
 protected:
