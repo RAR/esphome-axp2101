@@ -194,19 +194,16 @@ bool AXP2101Component::isBatteryConnected() {
 }
 
 bool AXP2101Component::isVBUSGood() {
-    uint8_t status = 0;
-    if (!readRegister(AXP2101_COMM_STAT0, &status)) {
-        ESP_LOGW(TAG, "Failed to read status register for VBUS check");
+    uint8_t status2 = 0;
+    if (!readRegister(AXP2101_COMM_STAT1, &status2)) {
+        ESP_LOGW(TAG, "Failed to read COMM_STAT1 register for VBUS check");
         return false;
     }
-    ESP_LOGD(TAG, "COMM_STAT0 register: 0x%02X", status);
-    // Check multiple status bits for VBUS presence
-    // Bit 5: VBUS good status
-    // Bit 7: VBUS present
-    bool vbus_good = (status & 0x20) != 0;
-    bool vbus_present = (status & 0x80) != 0;
-    ESP_LOGD(TAG, "VBUS good bit: %d, VBUS present bit: %d", vbus_good, vbus_present);
-    return vbus_good || vbus_present;
+    // Per XPowersLib AXP2101 isVbusIn(): STATUS2 bit 3 = 0 means VBUS present
+    // The "good" check seems unreliable, just check if VBUS is present
+    bool vbus_present = (status2 & 0x08) == 0;  // Bit 3 = 0 means present
+    ESP_LOGD(TAG, "VBUS present: %d (STAT1:0x%02X)", vbus_present, status2);
+    return vbus_present;
 }
 
 void AXP2101Component::setChargingLedMode(uint8_t mode) {
@@ -256,10 +253,11 @@ uint16_t AXP2101Component::getVBUSVoltage() {
         ESP_LOGW(TAG, "Failed to read VBUS voltage registers");
         return 0;
     }
-    // 14-bit value, LSB = 1.1mV (same as battery voltage)
-    uint16_t raw = ((uint16_t)data[0] << 6) | (data[1] & 0x3F);
-    ESP_LOGD(TAG, "VBUS raw ADC: %d (H:0x%02X L:0x%02X)", raw, data[0], data[1]);
-    return (uint16_t)((float)raw * 1.1f);
+    // Per XPowersLib: readRegisterH6L8 - 14-bit value (6 high bits + 8 low bits)
+    // Result is in millivolts (no conversion factor needed)
+    uint16_t raw = ((uint16_t)(data[0] & 0x3F) << 8) | data[1];
+    ESP_LOGD(TAG, "VBUS raw value: %d mV (H:0x%02X L:0x%02X)", raw, data[0], data[1]);
+    return raw;
 }
 
 float AXP2101Component::getTemperature() {
@@ -721,7 +719,6 @@ void AXP2101Component::update() {
     // Update VBUS connected status
     if (this->vbusconnected_bsensor_ != nullptr) {
         bool vbus_good = isVBUSGood();
-        ESP_LOGD(TAG, "VBUS Connected: %s", vbus_good ? "Yes" : "No");
         this->vbusconnected_bsensor_->publish_state(vbus_good);
     }
     
