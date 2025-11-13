@@ -54,10 +54,12 @@ namespace axp2101 {
 #define AXP2101_ADC_ENABLE 0x30
 #define AXP2101_VBAT_H 0x34
 #define AXP2101_VBAT_L 0x35
-#define AXP2101_TS_H 0x36
+#define AXP2101_TS_H 0x36       // External TS pin (thermistor)
 #define AXP2101_TS_L 0x37
 #define AXP2101_VBUS_H 0x38
 #define AXP2101_VBUS_L 0x39
+#define AXP2101_INTERNAL_TEMP_H 0x3C  // Internal die temperature
+#define AXP2101_INTERNAL_TEMP_L 0x3D
 #define AXP2101_VSYS_H 0x3A
 #define AXP2101_VSYS_L 0x3B
 

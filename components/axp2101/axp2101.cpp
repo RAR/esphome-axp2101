@@ -264,14 +264,17 @@ uint16_t AXP2101Component::getVBUSVoltage() {
 
 float AXP2101Component::getTemperature() {
     uint8_t data[2];
-    if (!readRegisterMulti(AXP2101_TS_H, data, 2)) {
+    
+    // Both M5Core2 v1.1 and M5CoreS3 use AXP2101 chip
+    // Internal die temperature registers: 0x3C (high byte), 0x3D (low byte)
+    // Formula: T(°C) = 22.0 + (7274 - raw) / 20.0
+    // Note: 0x36/0x37 are for external TS pin (thermistor), not internal temp
+    if (!readRegisterMulti(AXP2101_INTERNAL_TEMP_H, data, 2)) {
         return 0.0f;
     }
-    // 14-bit value: High 6 bits in data[0], Low 8 bits in data[1]
-    // XPowersLib uses readRegisterH6L8: (data[0] << 8) | data[1], masked to 14 bits
-    uint16_t raw = (((uint16_t)data[0] << 8) | data[1]) & 0x3FFF;  // Mask to 14 bits
-    // Formula from XPowersLib: T(°C) = 22.0 + (7274 - raw) / 20.0
-    // This gives internal die temperature in °C
+    
+    // 16-bit value: big-endian format (high byte first)
+    uint16_t raw = ((uint16_t)data[0] << 8) | data[1];
     float temp = 22.0f + (7274.0f - (float)raw) / 20.0f;
     return temp;
 }
@@ -336,23 +339,25 @@ void AXP2101Component::initPowerOutputs() {
 void AXP2101Component::initCharger() {
     ESP_LOGI(TAG, "Initializing charger...");
     
-    // Read current ADC state
+    // Both M5Core2 and M5CoreS3 use AXP2101 chip
+    // ADC enable register at 0x30 (AXP2101_ADC_ENABLE / ADC_CHANNEL_CTRL)
+    // Bit 7: VBAT, Bit 4: Temperature, Bit 2: VBUS
+    
     uint8_t adc_state;
     readRegister(AXP2101_ADC_ENABLE, &adc_state);
     ESP_LOGD(TAG, "Current ADC state: 0x%02X", adc_state);
     
     // Enable ADC for battery, VBUS, and temperature monitoring
-    // Bit 7: VBAT, Bit 1: VBUS, Bit 0: TS (die temperature)
-    // Note: Die temperature and TS pin are different - bit 0 is for internal die temp
-    setBits(AXP2101_ADC_ENABLE, 0x83);  // Enable VBAT (0x80), VBUS (0x02), and die temp (0x01)
+    // Bit 7: VBAT (0x80), Bit 4: Temperature (0x10), Bit 2: VBUS (0x04)
+    setBits(AXP2101_ADC_ENABLE, 0x94);
     
     // Verify ADC settings
     readRegister(AXP2101_ADC_ENABLE, &adc_state);
-    ESP_LOGI(TAG, "ADC enabled - state: 0x%02X (VBAT:%d VBUS:%d TEMP:%d)", 
+    ESP_LOGI(TAG, "ADC enabled - state: 0x%02X (VBAT:%d TEMP:%d VBUS:%d)", 
              adc_state, 
              (adc_state & 0x80) ? 1 : 0,
-             (adc_state & 0x02) ? 1 : 0, 
-             (adc_state & 0x01) ? 1 : 0);
+             (adc_state & 0x10) ? 1 : 0,
+             (adc_state & 0x04) ? 1 : 0);
     
     // Note: Not modifying VBUS limits, charge current, etc. as they may already be
     // configured by the bootloader/hardware. This is safer for initial setup.
